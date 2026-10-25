@@ -62,7 +62,7 @@ func (r *Runner) runBuildLight(ctx context.Context, j *Job, p *buildPlan, fail f
 	b := p.light
 	s := p.steps[1]
 	t0 := time.Now()
-	j.logf("info", "══ Build light: %s ══", b.name())
+	j.logf("info", "══ "+T("Skript")+": %s ══", b.name())
 	j.setStep(s, "running", "")
 	if st, err := os.Stat(b.Script); err != nil || st.IsDir() {
 		res, msg := fail(s, fmt.Sprintf("Skript %s nenalezen", b.Script))
@@ -111,6 +111,6 @@ func (r *Runner) runBuildLight(ctx context.Context, j *Job, p *buildPlan, fail f
 		return res, msg, false
 	}
 	j.setStep(s, "ok", humanDur(time.Since(t0).Seconds()))
-	j.logf("info", T("Build light „%s“ hotový za %s"), b.name(), humanDur(time.Since(t0).Seconds()))
+	j.logf("info", T("Skript „%s“ hotový za %s"), b.name(), humanDur(time.Since(t0).Seconds()))
 	return "", "", true
 }

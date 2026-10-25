@@ -580,7 +580,7 @@ func (r *Runner) prepareBuilds(j *Job, tab *Tab) ([]*buildPlan, error) {
 	if tab.BuildLight != nil && tab.BuildLight.Script != "" {
 		l := *tab.BuildLight
 		p := &buildPlan{light: &l, steps: []int{-1, len(j.Steps), -1, -1}}
-		j.Steps = append(j.Steps, &Step{Name: "Build light: " + l.name(), State: "pending"})
+		j.Steps = append(j.Steps, &Step{Name: T("Skript") + ": " + l.name(), State: "pending"})
 		plans = append(plans, p)
 	}
 	if len(plans) == 0 {

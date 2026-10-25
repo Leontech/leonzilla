@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.8 – 2026-10-25
+
+- **"Build light" is now called "Own script"** in the card settings. A card that only runs its own script says *Script* everywhere instead of *Build* (tile, card, button *Run script*, *Script only*, *Last script run*, confirmation, progress window, log). Cards with RAD Studio builds keep *Build*. Nothing changes in `config.json` – existing cards work as before.
+
 ## 1.11.7 – 2026-10-25
 
 - A card that only runs its own script (Build light, no server) now ends with *Script “…” finished without errors* instead of the misleading *nothing uploaded (build only)* – Leonzilla does not know whether the script uploads by itself. The *nothing uploaded* note stays for cards with a server when you choose *Build only*.

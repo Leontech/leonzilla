@@ -31,7 +31,7 @@ const editing = (id) => S.editing.has(id);
 const groups = () => S.settings.groups || [];
 const builds = () => S.settings.builds || [];
 const cardBuilds = (t) => (t.builds || []).map((id) => builds().find((b) => b.id === id)).filter(Boolean);
-// "Build light": the card's own script (Python, BAT, PowerShell) run like a build (then upload)
+// "Build light" (in the UI "Vlastní skript" / "Skript"): the card's own script (Python, BAT, PowerShell) run like a build (then upload)
 const hasLight = (t) => !!(t.buildLight && (t.buildLight.script || "").trim());
 // own label of the main button (build light), e.g. "Build a nahrát na web"; "" = default label
 const lightLabel = (t) => (hasLight(t) ? (t.buildLight.label || "").trim() : "");
@@ -42,6 +42,9 @@ const lightKind = (t) => {
   return { py: "Python", pyw: "Python", bat: "BAT", cmd: "CMD", ps1: "PowerShell", exe: "EXE" }[ext] || (ext ? ext.toUpperCase() : tr("skript"));
 };
 const hasBuilds = (t) => cardBuilds(t).length > 0 || hasLight(t);
+// the card runs only its own script (no RAD Studio build) – the UI then says "Skript" instead of "Build"
+// (stored in config.json as buildLight like before, so existing cards keep working)
+const scriptOnly = (t) => hasLight(t) && cardBuilds(t).length === 0;
 const buildNames = (t) => [...cardBuilds(t).map((b) => b.name), ...(hasLight(t) ? [lightName(t)] : [])];
 // "Info k verzi" (version info) of a build, passed to the post-build in LEONZILLA_VERSION_INFO; not set yet = build name
 const buildInfo = (b) => (b.versionInfo ?? b.name ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
@@ -62,7 +65,10 @@ const cardUnset = (t) => !syncSet(t) && !hasBuilds(t) && !hasBackups(t) && !hasG
 const syncReady = (t) => !!(t.conn.host && t.pairs.some((p) => p.enabled && (p.local || "").trim()));
 const syncHalfText = (t) => (t.conn.host ? "chybí zapnutá složka v PC" : "chybí server") + " – doplň ho, nebo dvojici složek odeber, pokud karta synchronizovat nemá";
 const mainMode = (t) => (hasBuilds(t) ? (syncReady(t) ? "buildsync" : "build") : syncReady(t) ? "sync" : "");
-const mainLabel = (t) => { const m = mainMode(t); if ((m === "buildsync" || m === "build") && lightLabel(t)) return lightLabel(t); return { buildsync: "Build + Synchronizovat", build: "Build", sync: "Synchronizovat" }[m] || ""; };
+// default text of the main button (without the card's own label)
+const mainLabelDefault = (t) => (scriptOnly(t) ? { buildsync: "Skript + Synchronizovat", build: "Spustit skript", sync: "Synchronizovat" }
+  : { buildsync: "Build + Synchronizovat", build: "Build", sync: "Synchronizovat" })[mainMode(t)] || "";
+const mainLabel = (t) => { const m = mainMode(t); if ((m === "buildsync" || m === "build") && lightLabel(t)) return lightLabel(t); return mainLabelDefault(t); };
 const groupOf = (t) => (groups().some((g) => g.id === t.group) ? t.group : "");
 const groupName = (id) => groups().find((g) => g.id === id)?.name || "";
 // cards in display order: by group (settings order, "no group" last), then by card order
@@ -563,7 +569,7 @@ function renderMain() {
     </details>
 
     <details class="sec" id="sec-light" open>
-      <summary><div class="sec-h">${icon("chev")}<h2>Build light</h2><span class="hint" id="light-hint">${hasLight(t) ? esc(lightName(t)) : "nepovinné – vlastní skript (Python, BAT, PowerShell) místo buildu RAD Studia"}</span></div></summary>
+      <summary><div class="sec-h">${icon("chev")}<h2>Vlastní skript</h2><span class="hint" id="light-hint">${hasLight(t) ? esc(lightName(t)) : "nepovinné – vlastní skript (Python, BAT, PowerShell) místo buildu RAD Studia"}</span></div></summary>
       <div class="form">
         <div class="f c12"><label for="f-lscript">Skript <span class="note">– Python (.py), dávka (.bat, .cmd) nebo PowerShell (.ps1); spustí se ve své složce; když doběhne bez chyby (kód 0), karta nahraje složky na server. Na kartě vypadá jako build: <i>Build + Synchronizovat</i>, <i>Jen build</i>, <i>Jen nahrát</i>.</span></label>
           <div class="path-field"><input id="f-lscript" value="${esc(t.buildLight?.script || "")}" placeholder="C:\\Projekty\\web\\build.py · build.bat" spellcheck="false">
@@ -571,7 +577,7 @@ function renderMain() {
         <div class="f c12"><label for="f-largs">Parametry skriptu <span class="note">– nepovinné, např. <code>--release</code></span></label>
           <input id="f-largs" value="${esc(t.buildLight?.args || "")}" spellcheck="false" placeholder="bez parametrů"></div>
         <div class="f c12"><label for="f-llabel">Popisek tlačítka <span class="note">– nepovinné, např. <i>Build a nahrát na leotech.cz</i> · prázdné = výchozí popisek</span></label>
-          <input id="f-llabel" value="${esc(t.buildLight?.label || "")}" maxlength="60" spellcheck="false" placeholder="${syncReady(t) ? "Build + Synchronizovat" : "Build"}"></div>
+          <input id="f-llabel" value="${esc(t.buildLight?.label || "")}" maxlength="60" spellcheck="false" placeholder="${esc(mainLabelDefault(t) || "Spustit skript")}"></div>
       </div>
     </details>
 
@@ -631,7 +637,7 @@ function lastBuildText(t) {
   const l = t.lastBuild;
   if (!l) return "";
   const res = { ok: "OK", failed: "selhal", cancelled: "přerušen" }[l.result] || l.result;
-  return `poslední build ${fmtWhen(l.at)} · ${res}${l.result !== "ok" && l.message ? ": " + esc(l.message) : ""}`;
+  return `${scriptOnly(t) ? "poslední skript" : "poslední build"} ${fmtWhen(l.at)} · ${res}${l.result !== "ok" && l.message ? ": " + esc(l.message) : ""}`;
 }
 
 function lastText(t) {
@@ -970,7 +976,7 @@ function renderOverview() {
 
 function cardKinds(t) {
   const k = [];
-  if (hasBuilds(t)) k.push("Build");
+  if (hasBuilds(t)) k.push(scriptOnly(t) ? "Skript" : "Build");
   if (hasBackups(t)) k.push(activeBackups(t).length === 1 ? "Záloha" : `${activeBackups(t).length} zálohy`);
   if (hasGit(t)) k.push(activeGit(t).length === 1 ? "GitHub (1 repozitář)" : `GitHub (${activeGit(t).length} repozitáře)`);
   if (hasFw(t)) k.push(`FW build (${t.fw.variants.map((v) => v.name).join(", ")})`);
@@ -992,7 +998,7 @@ function tileInner(t) {
     </header>
     <p class="srv">${esc(cardKinds(t))}</p>
     ${syncSet(t) ? `<p class="last err">Synchronizace nedokončená – ${t.conn.host ? "chybí složka" : "chybí server"}</p>` : ""}
-    ${hasBuilds(t) ? `<p class="tbuild">${icon("gear")}Build: ${buildNames(t).map(esc).join(" → ")}</p>` : ""}
+    ${hasBuilds(t) ? `<p class="tbuild">${icon("gear")}${scriptOnly(t) ? "Skript" : "Build"}: ${buildNames(t).map(esc).join(" → ")}</p>` : ""}
     <div class="st">${tileStatus(t)}</div>
     <div class="tile-actions">
       ${mm ? tileSyncButton(t) : ""}
@@ -1008,7 +1014,7 @@ function tileInner(t) {
     <p class="srv">${c.host ? `${esc(c.user ? c.user + "@" : "")}${esc(c.host)} · ${PROTO[c.protocol]}` : "server není nastavený"}</p>
     <p class="tg">${on.length ? `${on.length} ${on.length === 1 ? "složka" : on.length < 5 ? "složky" : "složek"} → <span class="mono">${targets}</span>` : "žádná zapnutá složka"}</p>
     ${(t.checklist || []).length ? `<p class="tcheck">${icon("lock")}${t.checklist.length} ${t.checklist.length === 1 ? "kontrola" : t.checklist.length < 5 ? "kontroly" : "kontrol"} před synchronizací</p>` : ""}
-    ${hasBuilds(t) ? `<p class="tbuild">${icon("gear")}Build: ${buildNames(t).map(esc).join(" → ")}</p>` : ""}
+    ${hasBuilds(t) ? `<p class="tbuild">${icon("gear")}${scriptOnly(t) ? "Skript" : "Build"}: ${buildNames(t).map(esc).join(" → ")}</p>` : ""}
     <div class="st">${tileStatus(t)}</div>
     <div class="tile-actions">
       <button class="ghost" data-act="check"${running(t.id) ? " disabled" : ""}>Zkontrolovat</button>
@@ -1016,7 +1022,7 @@ function tileInner(t) {
     </div>
     ${hasBuilds(t) || hasBackups(t) || hasGit(t) || hasFw(t) || hasMon(t) ? `<div class="tile-more">
       ${xb(true)}${hasBackups(t) || hasGit(t) || hasFw(t) || hasMon(t) ? `<span class="spacer"></span>` : ""}
-      ${hasBuilds(t) ? `<button class="link" data-act="onlybuild">Jen build</button><button class="link" data-act="onlysync">Jen nahrát</button>` : ""}</div>` : ""}`;
+      ${hasBuilds(t) ? `<button class="link" data-act="onlybuild">${scriptOnly(t) ? "Jen skript" : "Jen build"}</button><button class="link" data-act="onlysync">Jen nahrát</button>` : ""}</div>` : ""}`;
 }
 
 function tileSyncButton(t) {
@@ -1025,7 +1031,7 @@ function tileSyncButton(t) {
   let pct = 0, label = mainLabel(t), indet = false;
   if (busy) {
     if (j?.backup) { indet = true; label = "Záloha…"; }
-    else if (j?.phase === "building") { indet = true; const k = (j.steps || []).findIndex((x) => x.state === "running"); label = `Build ${k + 1} / ${(j.steps || []).length}`; }
+    else if (j?.phase === "building") { indet = true; const k = (j.steps || []).findIndex((x) => x.state === "running"); label = scriptOnly(t) ? "Skript běží…" : `Build ${k + 1} / ${(j.steps || []).length}`; }
     else if (!j || j.phase !== "uploading" || j.preview) { indet = true; label = j?.preview ? "Kontroluji…" : j?.phase === "scanning" ? "Porovnávám…" : "Připojuji…"; }
     else {
       pct = j.bytesTotal > 0 ? Math.min(100, (j.bytesDone / j.bytesTotal) * 100) : (j.filesTotal ? (j.filesDone / j.filesTotal) * 100 : 0);
@@ -1045,7 +1051,7 @@ function tileStatus(t) {
     last = `<p class="last${t.lastSync && t.lastSync.result !== "ok" ? " err" : ""}">${lastText(t)}</p>`;
     if (lb && lb.result !== "ok" && (!t.lastSync || new Date(lb.at) >= new Date(t.lastSync.at))) last += `<p class="last err">${lastBuildText(t)}</p>`;
   } else {
-    if (hasBuilds(t)) last += `<p class="last${lb && lb.result !== "ok" ? " err" : ""}">${lb ? lastBuildText(t).replace(/^p/, "P") : "Zatím nebuildováno"}</p>`;
+    if (hasBuilds(t)) last += `<p class="last${lb && lb.result !== "ok" ? " err" : ""}">${lb ? lastBuildText(t).replace(/^p/, "P") : scriptOnly(t) ? "Skript zatím neběžel" : "Zatím nebuildováno"}</p>`;
     if (hasBackups(t)) last += `<p class="last${t.lastBackup && t.lastBackup.result !== "ok" ? " err" : ""}">${lastBackupText(t)}</p>`;
     if (hasGit(t)) last += `<p class="last${t.lastGit && t.lastGit.result !== "ok" ? " err" : ""}">${lastGitText(t)}</p>`;
   }
@@ -2057,7 +2063,7 @@ function openBuildWindow(id, kind) {
   if (bw) clearTimeout(bw.timer);
   bw = { id, logSeen: 0, timer: null };
   modal(`
-    <div class="modal-h bw-h"><h3 id="bw-title">${kind === "backup" ? "Záloha" : "Build"} „${esc(t.name)}“</h3><p id="bw-sub">Spouštím…</p></div>
+    <div class="modal-h bw-h"><h3 id="bw-title">${kind === "backup" ? "Záloha" : scriptOnly(t) ? "Skript" : "Build"} „${esc(t.name)}“</h3><p id="bw-sub">Spouštím…</p></div>
     <div class="modal-b bw-b">
       <ol class="bsteps" id="bw-steps"></ol>
       <div class="bw-prog" id="bw-prog" hidden><span class="fill"></span></div>
@@ -2176,7 +2182,7 @@ function renderView(t) {
         ${mm ? `<button class="sync" id="btn-sync"><span class="fill"></span><span class="lbl">${icon(mm === "build" ? "gear" : "up")}<span id="sync-text">${mainLabel(t)}</span></span></button>` : extra ? `<div class="row big-extra">${extra}</div>` : ""}
         <div class="row">
           ${ready ? `<button class="plain small" id="btn-preview">Náhled změn</button>` : ""}
-          ${hasBuilds(t) && ready ? `<button class="plain small" id="btn-onlybuild">Jen build</button><button class="plain small" id="btn-onlysync">Jen nahrát</button>` : ""}
+          ${hasBuilds(t) && ready ? `<button class="plain small" id="btn-onlybuild">${scriptOnly(t) ? "Jen skript" : "Jen build"}</button><button class="plain small" id="btn-onlysync">Jen nahrát</button>` : ""}
           <button class="plain small" id="btn-log">${icon("log")}Log</button>
           <button class="plain small" id="btn-edit">${icon("gear")}Upravit kartu</button>
           <button class="plain small" id="btn-dup" title="Nová karta se stejným nastavením">${icon("copy")}Duplikovat</button>
@@ -2219,9 +2225,9 @@ function renderView(t) {
     </section>` : ""}
 
     ${hasBuilds(t) ? `<section class="sec">
-      <div class="sec-h"><h2>Build</h2><span class="hint">${t.lastBuild ? lastBuildText(t) : ftp ? "pustí se před synchronizací v tomto pořadí" : "pustí se v tomto pořadí"}</span></div>
+      <div class="sec-h"><h2>${scriptOnly(t) ? "Skript" : "Build"}</h2><span class="hint">${t.lastBuild ? lastBuildText(t) : ftp ? "pustí se před synchronizací v tomto pořadí" : "pustí se v tomto pořadí"}</span></div>
       <ol class="vbuilds">${cardBuilds(t).map((b) => `<li><span class="bn" translate="no">${esc(b.name)}</span><span class="note">${esc(b.config)}${b.crlf ? " · CRLF" : ""}${b.postBuild ? " · post-build" : ""}${b.postBuild ? ` · info: ${cardBuildInfo(t, b) ? "„" + esc(cardBuildInfo(t, b)) + "“" : "bez info"}` : ""}</span>
-        <span class="sw-line">${b.defines.map((d) => `<span class="chip ro on">${esc(d)}</span>`).join("") || `<span class="note">bez přepínačů</span>`}</span></li>`).join("")}${hasLight(t) ? `<li><span class="bn">${esc(lightName(t))}</span><span class="note">Build light · ${esc(lightKind(t))}${t.buildLight.args ? " · " + esc(t.buildLight.args) : ""}</span><span class="sw-line"><span class="note mono">${esc(t.buildLight.script)}</span></span></li>` : ""}</ol>
+        <span class="sw-line">${b.defines.map((d) => `<span class="chip ro on">${esc(d)}</span>`).join("") || `<span class="note">bez přepínačů</span>`}</span></li>`).join("")}${hasLight(t) ? `<li><span class="bn">${esc(lightName(t))}</span><span class="note">${scriptOnly(t) ? "" : "skript · "}${esc(lightKind(t))}${t.buildLight.args ? " · " + esc(t.buildLight.args) : ""}</span><span class="sw-line"><span class="note mono">${esc(t.buildLight.script)}</span></span></li>` : ""}</ol>
     </section>` : ""}
 
     ${(t.backups || []).length ? `<section class="sec">
@@ -2348,16 +2354,16 @@ async function confirmSync(t, mode) {
   const checks = doSync ? t.checklist || [] : [];
   const bl = doBuild ? cardBuilds(t) : [];
   const lt = doBuild && hasLight(t);
-  const title = lightLabel(t) && (mode === "buildsync" || (mode === "build" && !syncReady(t))) ? lightLabel(t) : { buildsync: "Build + Synchronizovat", sync: "Synchronizovat", build: syncReady(t) ? "Jen build" : "Build" }[mode];
+  const title = lightLabel(t) && (mode === "buildsync" || (mode === "build" && !syncReady(t))) ? lightLabel(t) : (scriptOnly(t) ? { buildsync: "Skript + Synchronizovat", sync: "Synchronizovat", build: syncReady(t) ? "Jen skript" : "Spustit skript" } : { buildsync: "Build + Synchronizovat", sync: "Synchronizovat", build: syncReady(t) ? "Jen build" : "Build" })[mode];
   modal(`
     <div class="modal-h"><h3>${title} „${esc(t.name)}“?</h3>
-      <p>${doSync ? `${esc(t.conn.user ? t.conn.user + "@" : "")}${esc(t.conn.host)} · ${PROTO[t.conn.protocol]}` : bl.length ? "Zkompiluje se, nic se nenahraje." : "Spustí se skript, nic se nenahraje."}</p></div>
+      <p>${doSync ? `${esc(t.conn.user ? t.conn.user + "@" : "")}${esc(t.conn.host)} · ${PROTO[t.conn.protocol]}` : bl.length ? "Zkompiluje se, nic se nenahraje." : syncReady(t) ? "Spustí se skript, na server se nic nenahraje." : "Spustí se skript (Leonzilla sama nic nenahrává)."}</p></div>
     <div class="modal-b">
       ${bl.length || lt ? `<div class="bsteps-c">
-        <p class="cl-h">Build${bl.length + (lt ? 1 : 0) > 1 ? "y v tomto pořadí" : ""}:</p>
+        <p class="cl-h">${!bl.length ? "Skript:" : bl.length + (lt ? 1 : 0) > 1 ? "Buildy v tomto pořadí:" : "Build:"}</p>
         <ol>${bl.map((b) => `<li><b translate="no">${esc(b.name)}</b> <span class="note">konfigurace ${esc(b.config)}${b.crlf ? " · CRLF" : ""}${b.postBuild ? " · post-build" : ""}</span>
           ${b.postBuild ? `<label class="binfo"><span>Info k verzi</span><input data-binfo="${esc(b.id)}" value="${esc(cardBuildInfo(t, b))}" maxlength="80" spellcheck="false" placeholder="prázdné = bez info" title="Karta si text zapamatuje pro příště"><button type="button" class="icon-btn small" data-binfo-reset="${esc(b.id)}" title="Vrátit výchozí text z nastavení buildu: ${esc(buildInfo(b) || "(bez info)")}">↺</button></label>` : ""}
-          <div class="sw-line">${b.defines.length ? b.defines.map((d) => `<span class="chip ro on">${esc(d)}</span>`).join("") : `<span class="note">žádný přepínač</span>`}</div></li>`).join("")}${lt ? `<li><b>${esc(lightName(t))}</b> <span class="note">Build light · ${esc(lightKind(t))}${t.buildLight.args ? " · " + esc(t.buildLight.args) : ""}</span></li>` : ""}</ol>
+          <div class="sw-line">${b.defines.length ? b.defines.map((d) => `<span class="chip ro on">${esc(d)}</span>`).join("") : `<span class="note">žádný přepínač</span>`}</div></li>`).join("")}${lt ? `<li><b>${esc(lightName(t))}</b> <span class="note">${scriptOnly(t) ? "" : "skript · "}${esc(lightKind(t))}${t.buildLight.args ? " · " + esc(t.buildLight.args) : ""}</span></li>` : ""}</ol>
         <div id="m-bwarn"></div>
         ${doSync ? `<p class="note">Synchronizace začne, až všechny buildy doběhnou bez chyby.</p>` : ""}
       </div>` : ""}
@@ -2529,7 +2535,7 @@ function updateSyncButton() {
   if (!busy) { txt.textContent = mainLabel(t); fill.style.width = "0"; btn.title = ""; return; }
   btn.title = "Probíhá – zastavíš to v panelu dole";
   if (j?.backup) { txt.textContent = "Záloha…"; btn.classList.add("indet"); return; }
-  if (j?.phase === "building") { const k = (j.steps || []).findIndex((x) => x.state === "running"); txt.textContent = `Build ${k + 1} / ${(j.steps || []).length}…`; btn.classList.add("indet"); return; }
+  if (j?.phase === "building") { const k = (j.steps || []).findIndex((x) => x.state === "running"); txt.textContent = scriptOnly(t) ? "Skript běží…" : `Build ${k + 1} / ${(j.steps || []).length}…`; btn.classList.add("indet"); return; }
   if (!j || j.phase === "connecting") { txt.textContent = "Připojuji…"; btn.classList.add("indet"); return; }
   if (j.phase === "scanning") { txt.textContent = `Porovnávám… ${fmtNum(j.scanFiles)}`; btn.classList.add("indet"); return; }
   if (j.preview) { txt.textContent = "Náhled…"; btn.classList.add("indet"); return; }
