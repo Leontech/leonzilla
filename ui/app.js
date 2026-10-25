@@ -31,11 +31,16 @@ const editing = (id) => S.editing.has(id);
 const groups = () => S.settings.groups || [];
 const builds = () => S.settings.builds || [];
 const cardBuilds = (t) => (t.builds || []).map((id) => builds().find((b) => b.id === id)).filter(Boolean);
-// "Build light": the card's own Python script run like a build (then upload)
+// "Build light": the card's own script (Python, BAT, PowerShell) run like a build (then upload)
 const hasLight = (t) => !!(t.buildLight && (t.buildLight.script || "").trim());
 // own label of the main button (build light), e.g. "Build a nahrát na web"; "" = default label
 const lightLabel = (t) => (hasLight(t) ? (t.buildLight.label || "").trim() : "");
 const lightName = (t) => (t.buildLight?.script || "").trim().replace(/^"|"$/g, "").split(/[\\/]/).pop();
+// kind of the Build light script by its extension (shown in the build list / confirmation)
+const lightKind = (t) => {
+  const ext = (lightName(t).match(/\.([^.]+)$/) || [])[1]?.toLowerCase() || "";
+  return { py: "Python", pyw: "Python", bat: "BAT", cmd: "CMD", ps1: "PowerShell", exe: "EXE" }[ext] || (ext ? ext.toUpperCase() : tr("skript"));
+};
 const hasBuilds = (t) => cardBuilds(t).length > 0 || hasLight(t);
 const buildNames = (t) => [...cardBuilds(t).map((b) => b.name), ...(hasLight(t) ? [lightName(t)] : [])];
 // "Info k verzi" (version info) of a build, passed to the post-build in LEONZILLA_VERSION_INFO; not set yet = build name
@@ -1725,7 +1730,7 @@ function openGitWindow(t) {
   next();
 }
 
-/* ------------------------------------------------------------------ Build light (Python script) */
+/* ------------------------------------------------------------------ Build light (own script) */
 
 function bindLight(t) {
   const sc = $("#f-lscript"), ar = $("#f-largs"), ll = $("#f-llabel");
@@ -2203,7 +2208,7 @@ function renderView(t) {
     ${hasBuilds(t) ? `<section class="sec">
       <div class="sec-h"><h2>Build</h2><span class="hint">${t.lastBuild ? lastBuildText(t) : ftp ? "pustí se před synchronizací v tomto pořadí" : "pustí se v tomto pořadí"}</span></div>
       <ol class="vbuilds">${cardBuilds(t).map((b) => `<li><span class="bn" translate="no">${esc(b.name)}</span><span class="note">${esc(b.config)}${b.crlf ? " · CRLF" : ""}${b.postBuild ? " · post-build" : ""}${b.postBuild ? ` · info: ${cardBuildInfo(t, b) ? "„" + esc(cardBuildInfo(t, b)) + "“" : "bez info"}` : ""}</span>
-        <span class="sw-line">${b.defines.map((d) => `<span class="chip ro on">${esc(d)}</span>`).join("") || `<span class="note">bez přepínačů</span>`}</span></li>`).join("")}${hasLight(t) ? `<li><span class="bn">${esc(lightName(t))}</span><span class="note">Build light · Python${t.buildLight.args ? " · " + esc(t.buildLight.args) : ""}</span><span class="sw-line"><span class="note mono">${esc(t.buildLight.script)}</span></span></li>` : ""}</ol>
+        <span class="sw-line">${b.defines.map((d) => `<span class="chip ro on">${esc(d)}</span>`).join("") || `<span class="note">bez přepínačů</span>`}</span></li>`).join("")}${hasLight(t) ? `<li><span class="bn">${esc(lightName(t))}</span><span class="note">Build light · ${esc(lightKind(t))}${t.buildLight.args ? " · " + esc(t.buildLight.args) : ""}</span><span class="sw-line"><span class="note mono">${esc(t.buildLight.script)}</span></span></li>` : ""}</ol>
     </section>` : ""}
 
     ${(t.backups || []).length ? `<section class="sec">
@@ -2339,7 +2344,7 @@ async function confirmSync(t, mode) {
         <p class="cl-h">Build${bl.length + (lt ? 1 : 0) > 1 ? "y v tomto pořadí" : ""}:</p>
         <ol>${bl.map((b) => `<li><b translate="no">${esc(b.name)}</b> <span class="note">konfigurace ${esc(b.config)}${b.crlf ? " · CRLF" : ""}${b.postBuild ? " · post-build" : ""}</span>
           ${b.postBuild ? `<label class="binfo"><span>Info k verzi</span><input data-binfo="${esc(b.id)}" value="${esc(cardBuildInfo(t, b))}" maxlength="80" spellcheck="false" placeholder="prázdné = bez info" title="Karta si text zapamatuje pro příště"><button type="button" class="icon-btn small" data-binfo-reset="${esc(b.id)}" title="Vrátit výchozí text z nastavení buildu: ${esc(buildInfo(b) || "(bez info)")}">↺</button></label>` : ""}
-          <div class="sw-line">${b.defines.length ? b.defines.map((d) => `<span class="chip ro on">${esc(d)}</span>`).join("") : `<span class="note">žádný přepínač</span>`}</div></li>`).join("")}${lt ? `<li><b>${esc(lightName(t))}</b> <span class="note">Build light · Python${t.buildLight.args ? " · " + esc(t.buildLight.args) : ""}</span></li>` : ""}</ol>
+          <div class="sw-line">${b.defines.length ? b.defines.map((d) => `<span class="chip ro on">${esc(d)}</span>`).join("") : `<span class="note">žádný přepínač</span>`}</div></li>`).join("")}${lt ? `<li><b>${esc(lightName(t))}</b> <span class="note">Build light · ${esc(lightKind(t))}${t.buildLight.args ? " · " + esc(t.buildLight.args) : ""}</span></li>` : ""}</ol>
         <div id="m-bwarn"></div>
         ${doSync ? `<p class="note">Synchronizace začne, až všechny buildy doběhnou bez chyby.</p>` : ""}
       </div>` : ""}

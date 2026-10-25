@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.5 – 2026-10-25
+
+- Build light: the build list and the confirmation show the real script type (*Python*, *BAT*, *CMD*, *PowerShell*) instead of always *Python*.
+
 ## 1.11.4 – 2026-10-25
 
 - **Build light runs batch and PowerShell scripts too**: besides Python (`.py`) the script can be `.bat` / `.cmd` (through cmd) or `.ps1` (PowerShell with `-ExecutionPolicy Bypass`); the file picker offers all of them.
