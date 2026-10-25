@@ -246,7 +246,9 @@ async function checkAllLocal() {
 
 /* ------------------------------------------------------------------ saving */
 
-function scheduleSave(tab, delay = 500) {
+// autosave: typing waits 800 ms of quiet (fewer writes into Dropbox); a failed save is retried once quietly
+// before an error is shown – Dropbox briefly locks the freshly changed config.json while it uploads it
+function scheduleSave(tab, delay = 800) {
   clearTimeout(S.saveTimers[tab.id]);
   setSaveState("Ukládám…");
   S.saveTimers[tab.id] = setTimeout(() => saveTab(tab), delay);
@@ -266,9 +268,18 @@ async function saveTab(tab) {
     (fresh.backups || []).forEach((b, i) => { if (tab.backups?.[i] && !tab.backups[i].id) tab.backups[i].id = b.id; });
     (fresh.git || []).forEach((g, i) => { if (tab.git?.[i] && !tab.git[i].id) tab.git[i].id = g.id; });
     setSaveState("Uloženo");
+    delete (S.saveRetry ||= {})[tab.id];
   } catch (e) {
-    setSaveState("");
-    toast("Uložení se nepovedlo: " + e.message, true);
+    S.saveRetry ||= {};
+    if (!S.saveRetry[tab.id] && !S.saveTimers[tab.id]) {
+      S.saveRetry[tab.id] = true;
+      setSaveState("Ukládám…");
+      S.saveTimers[tab.id] = setTimeout(() => saveTab(tab), 2000);
+    } else if (!S.saveTimers[tab.id]) {
+      delete S.saveRetry[tab.id];
+      setSaveState("");
+      toast("Uložení se nepovedlo: " + e.message, true);
+    }
   } finally { S.pendingSave--; }
 }
 
@@ -543,10 +554,10 @@ function renderMain() {
     </details>
 
     <details class="sec" id="sec-light" open>
-      <summary><div class="sec-h">${icon("chev")}<h2>Build light</h2><span class="hint" id="light-hint">${hasLight(t) ? esc(lightName(t)) : "nepovinné – vlastní Python skript místo buildu RAD Studia"}</span></div></summary>
+      <summary><div class="sec-h">${icon("chev")}<h2>Build light</h2><span class="hint" id="light-hint">${hasLight(t) ? esc(lightName(t)) : "nepovinné – vlastní skript (Python, BAT, PowerShell) místo buildu RAD Studia"}</span></div></summary>
       <div class="form">
-        <div class="f c12"><label for="f-lscript">Python skript <span class="note">– spustí se ve své složce; když doběhne bez chyby (kód 0), karta nahraje složky na server. Na kartě vypadá jako build: <i>Build + Synchronizovat</i>, <i>Jen build</i>, <i>Jen nahrát</i>.</span></label>
-          <div class="path-field"><input id="f-lscript" value="${esc(t.buildLight?.script || "")}" placeholder="C:\\Projekty\\web\\build.py" spellcheck="false">
+        <div class="f c12"><label for="f-lscript">Skript <span class="note">– Python (.py), dávka (.bat, .cmd) nebo PowerShell (.ps1); spustí se ve své složce; když doběhne bez chyby (kód 0), karta nahraje složky na server. Na kartě vypadá jako build: <i>Build + Synchronizovat</i>, <i>Jen build</i>, <i>Jen nahrát</i>.</span></label>
+          <div class="path-field"><input id="f-lscript" value="${esc(t.buildLight?.script || "")}" placeholder="C:\\Projekty\\web\\build.py · build.bat" spellcheck="false">
           ${S.canPickDir ? `<button id="f-lscript-pick" title="Vybrat skript">${icon("file")}</button>` : ""}</div></div>
         <div class="f c12"><label for="f-largs">Parametry skriptu <span class="note">– nepovinné, např. <code>--release</code></span></label>
           <input id="f-largs" value="${esc(t.buildLight?.args || "")}" spellcheck="false" placeholder="bez parametrů"></div>
@@ -1720,13 +1731,13 @@ function bindLight(t) {
   const sc = $("#f-lscript"), ar = $("#f-largs"), ll = $("#f-llabel");
   if (!sc) return;
   const cfg = () => (t.buildLight ||= { script: "", args: "", label: "" });
-  const hint = () => { $("#light-hint").textContent = hasLight(t) ? lightName(t) : "nepovinné – vlastní Python skript místo buildu RAD Studia"; updateSyncButton(); };
+  const hint = () => { $("#light-hint").textContent = hasLight(t) ? lightName(t) : "nepovinné – vlastní skript (Python, BAT, PowerShell) místo buildu RAD Studia"; updateSyncButton(); };
   sc.oninput = () => { cfg().script = sc.value.trim(); hint(); scheduleSave(t); };
   ar.oninput = () => { cfg().args = ar.value; scheduleSave(t); };
   if (ll) ll.oninput = () => { cfg().label = ll.value; updateSyncButton(); scheduleSave(t); };
   $("#f-lscript-pick")?.addEventListener("click", async () => {
     try {
-      const r = await api("POST", "/api/pickfile", { title: tr("Vyber Python skript"), start: sc.value, filterName: tr("Python skript (*.py)"), filterSpec: "*.py" });
+      const r = await api("POST", "/api/pickfile", { title: tr("Vyber skript"), start: sc.value, filterName: tr("Skript (*.py, *.bat, *.cmd, *.ps1)"), filterSpec: "*.py;*.bat;*.cmd;*.ps1" });
       if (!r.cancelled) { sc.value = r.path; cfg().script = r.path; hint(); scheduleSave(t, 0); }
     } catch (e) { toast(e.message, true); }
   });

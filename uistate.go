@@ -75,11 +75,7 @@ func (s *Store) saveUI(upd map[string]json.RawMessage) error {
 	if err := os.MkdirAll(filepath.Dir(s.uiPath()), 0o755); err != nil {
 		return err
 	}
-	tmp := s.uiPath() + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, s.uiPath())
+	return writeFileAtomic(s.uiPath(), b) // retries while Dropbox holds the file
 }
 
 func (a *API) hUIGet(w http.ResponseWriter, r *http.Request) { writeJSON(w, a.store.loadUI()) }

@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.4 – 2026-10-25
+
+- **Build light runs batch and PowerShell scripts too**: besides Python (`.py`) the script can be `.bat` / `.cmd` (through cmd) or `.ps1` (PowerShell with `-ExecutionPolicy Bypass`); the file picker offers all of them.
+- **Reliable autosave in a Dropbox folder**: while typing e.g. a card name, Dropbox (or OneDrive) briefly locks the just-saved `config.json` while uploading it, which showed "Saving failed" bubbles. Saving now waits for quiet typing a bit longer and retries the write for a few seconds (plus one quiet retry in the window) before reporting an error.
+
 ## 1.11.3 – 2026-10-25
 
 - **Collapsed groups are remembered per computer** (also open tabs and the last card): saved in `Leonzilla_data\ui\<computer>.json`. Before, the window storage was used, which was lost on every start because the window runs on a random local port.

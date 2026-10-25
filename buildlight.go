@@ -1,6 +1,7 @@
 package main
 
-// "Build light": a card runs its own Python script (e.g. a build / post-process script of a web project)
+// "Build light": a card runs its own script – Python (.py), batch (.bat / .cmd) or PowerShell (.ps1) – e.g. a build /
+// post-process script of a web project or a release script
 // instead of (or after) the RAD Studio builds; on success the card uploads to the server as after a build.
 // On the card it looks and behaves like a build (Build + Synchronizovat, Jen build, Jen nahrát).
 
@@ -16,7 +17,7 @@ import (
 )
 
 type BuildLight struct {
-	Script string `json:"script"`          // path to the .py script (another file type runs via cmd)
+	Script string `json:"script"`          // path to the script: .py via Python, .ps1 via PowerShell, others (.bat, .cmd, .exe) via cmd
 	Args   string `json:"args,omitempty"`  // parameters for the script
 	Label  string `json:"label,omitempty"` // own text of the main card button, e.g. "Build and upload to my web" (empty = default)
 }
@@ -79,7 +80,14 @@ func (r *Runner) runBuildLight(ctx context.Context, j *Job, p *buildPlan, fail f
 		}
 		j.logf("info", "> %s %s", strings.TrimSpace(filepath.Base(py)+" "+strings.Join(pre, " ")), strings.TrimSpace(filepath.Base(b.Script)+" "+b.Args))
 		cmd = exec.Command(py, append(append(pre, b.Script), args...)...)
-	default:
+	case ".ps1":
+		ps := "powershell.exe"
+		if runtime.GOOS != "windows" {
+			ps = "pwsh"
+		}
+		j.logf("info", "> powershell -File %s", strings.TrimSpace(filepath.Base(b.Script)+" "+b.Args))
+		cmd = exec.Command(ps, append([]string{"-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", b.Script}, args...)...)
+	default: // .bat, .cmd, .exe … through cmd (call = also batch files that end with exit /b)
 		line := `"` + b.Script + `"`
 		if b.Args != "" {
 			line += " " + b.Args

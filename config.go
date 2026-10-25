@@ -375,12 +375,26 @@ func (s *Store) TabCopy(id string) (*Tab, error) {
 	return &c, nil
 }
 
+// writeFileAtomic writes data to a temp file and renames it over path. The data folder usually lives in Dropbox
+// (or OneDrive), whose client briefly opens freshly changed files to upload them – during that moment Windows refuses
+// the write or the rename ("Access is denied" / "being used by another process"). So both steps are retried for up
+// to ~4 s before giving up, which makes fast autosave (typing a card name) reliable.
 func writeFileAtomic(path string, data []byte) error {
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
-		return err
+	var err error
+	for i, wait := 0, 50*time.Millisecond; i < 12; i++ {
+		if err = os.WriteFile(tmp, data, 0o600); err == nil {
+			if err = os.Rename(tmp, path); err == nil {
+				return nil
+			}
+		}
+		time.Sleep(wait)
+		if wait < 600*time.Millisecond {
+			wait *= 2
+		}
 	}
-	return os.Rename(tmp, path)
+	_ = os.Remove(tmp)
+	return err
 }
 
 func newID() string {
