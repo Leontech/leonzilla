@@ -45,7 +45,7 @@ function helpHTMLen() {
           <li><b>New card</b> – the ${k("+")} button in the bar or ${k("Ctrl")}+${k("T")}. Every project (website, firmware…) has its own card.</li>
           <li><b>Fill in what the card should do</b> – any of these is enough: <i>synchronization to a server</i> (server + folder pairs PC → server), <i>build</i>, <i>backup</i>, <i>GitHub</i>, <i>FW build</i>. Everything is saved immediately. The <i>Synchronize</i> button appears once both a server and a folder are filled in; a backup-only card leaves the folder section empty.</li>
           <li><b>Done – lock.</b> A locked card only shows its settings and cannot be changed by accident. Change it with <i>Edit card</i>.</li>
-          <li><b>Overview</b> – all cards as tiles, sorted into groups (Settings → Groups). Drag a tile to move it to another group.</li>
+          <li><b>Overview</b> – all cards as tiles, sorted into groups (Settings → Groups). Drag a tile to move it to another group. Click a group name to collapse it – each computer remembers its own collapsed groups (and open tabs).</li>
           <li><b>Tabs at the top</b> = open cards only. Open a card by clicking its tile, close it with ✕ on the tab (or ${"<kbd>Ctrl</kbd>+<kbd>W</kbd>"}, middle mouse button) – it stays in the Overview. When the tabs do not fit, arrows ‹ › appear (the mouse wheel scrolls too).</li>
         </ol>
         <p class="hp-tip">${icon("copy")}<span>A similar project? <b>Duplicate</b> copies the whole card including the password – then just change what differs. Delete a card you no longer need in <i>Edit card → Delete</i> or with a right click on its tab or tile (files on the PC and on the server are not touched).</span></p>

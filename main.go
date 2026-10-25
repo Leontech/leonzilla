@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const appVersion = "1.11.2"
+const appVersion = "1.11.3"
 const appTitle = "Leonzilla"
 
 // dataDir = folder "Leonzilla_data" next to the exe (portable – lives in Dropbox together with the exe).

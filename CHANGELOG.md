@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.3 – 2026-10-25
+
+- **Collapsed groups are remembered per computer** (also open tabs and the last card): saved in `Leonzilla_data\ui\<computer>.json`. Before, the window storage was used, which was lost on every start because the window runs on a random local port.
+
 ## 1.11.2 – 2026-10-25
 
 - **Own button label for Build light**: *Card settings → Build light → Button label*, e.g. *Build and upload to my web*. The main card button then shows this text instead of *Build + Synchronize* / *Build* – handy for a script that uploads by itself (such as publishing a program to a website); such a card needs no server or folders.

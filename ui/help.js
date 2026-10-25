@@ -46,7 +46,7 @@ function helpHTMLcs() {
           <li><b>Nová karta</b> – tlačítko ${k("+")} v liště nebo ${k("Ctrl")}+${k("T")}. Každý projekt (web, firmware…) má svou kartu.</li>
           <li><b>Vyplň, co karta má umět</b> – stačí cokoli z toho: <i>synchronizace na server</i> (server + dvojice složek PC → server), <i>build</i>, <i>záloha</i>, <i>GitHub</i>, <i>FW build</i>. Vše se ukládá hned. Tlačítko <i>Synchronizovat</i> se objeví, až je vyplněný server i složka; karta jen na zálohy nechá sekci složek prázdnou.</li>
           <li><b>Hotovo – zamknout.</b> Zamčená karta jen ukazuje nastavení a nejde omylem změnit. Úpravy přes <i>Upravit kartu</i>.</li>
-          <li><b>Přehled</b> – všechny karty jako dlaždice, rozdělené do skupin (Nastavení → Skupiny). Dlaždice jde přetáhnout do jiné skupiny.</li>
+          <li><b>Přehled</b> – všechny karty jako dlaždice, rozdělené do skupin (Nastavení → Skupiny). Dlaždice jde přetáhnout do jiné skupiny. Skupinu sbalíš klikem na její název – které skupiny jsou sbalené (i otevřené záložky), si pamatuje každý počítač zvlášť.</li>
           <li><b>Záložky nahoře</b> = jen otevřené karty. Kartu otevřeš kliknutím na dlaždici, zavřeš ✕ na záložce (nebo ${"<kbd>Ctrl</kbd>+<kbd>W</kbd>"}, prostřední tlačítko myši) – v Přehledu zůstane. Když se záložky nevejdou, objeví se šipky ‹ › (posouvá i kolečko myši).</li>
         </ol>
         <p class="hp-tip">${icon("copy")}<span>Podobný projekt? <b>Duplikovat</b> zkopíruje celou kartu včetně hesla – pak jen přepíšeš, co se liší. Nepotřebnou kartu smažeš v <i>Upravit kartu → Smazat</i> nebo pravým tlačítkem na záložce či dlaždici (soubory v PC ani na serveru se nemění).</span></p>

@@ -146,13 +146,12 @@ async function load() {
     Object.keys(S.fwRunning).forEach((id) => fwBgKick(id));
     S.tabs = st.tabs || []; S.jobs = st.jobs || {};
     applyTheme();
-    let remembered = null;
-    try { remembered = localStorage.getItem("lz-current"); } catch {}
+    // window state of this PC (collapsed groups, open tabs, last card) – kept by the app per computer, see uiGet
+    S.ui = st.ui && typeof st.ui === "object" ? st.ui : {};
+    const remembered = uiGet("current", null);
     if (!S.tabs.some((t) => t.id === S.current)) S.current = S.tabs.some((t) => t.id === remembered) ? remembered : S.tabs[0]?.id ?? null;
-    let view = "overview";
-    try { view = localStorage.getItem("lz-view") || "overview"; } catch {}
-    let open = null;
-    try { open = JSON.parse(localStorage.getItem("lz-open") || "null"); } catch {}
+    const view = uiGet("view", "overview");
+    const open = uiGet("open", null);
     S.open = Array.isArray(open) ? open.filter((id) => S.tabs.some((t) => t.id === id)) : [];
     S.view = view === "card" && S.current ? "card" : "overview";
     if (S.view === "card") openTab(S.current);
@@ -171,7 +170,31 @@ function applyTheme() {
   else document.documentElement.setAttribute("data-theme", t);
 }
 
-function saveOpen() { try { localStorage.setItem("lz-open", JSON.stringify(S.open)); } catch {} }
+/* Per-PC window state: saved by the app into Leonzilla_data/ui/<computer>.json (the page runs on a random local port,
+   so the browser storage would forget it on every start). The old browser storage is only read as a fallback. */
+const UI_OLD = { current: "lz-current", view: "lz-view", open: "lz-open", collapsed: "lz-collapsed" };
+function uiGet(key, def) {
+  if (S.ui && key in S.ui) return S.ui[key];
+  try {
+    const v = localStorage.getItem(UI_OLD[key]);
+    if (v != null) return key === "open" || key === "collapsed" ? JSON.parse(v) : v;
+  } catch {}
+  return def;
+}
+let uiTimer = null, uiDirty = {};
+function uiSet(key, value) {
+  (S.ui ||= {})[key] = value;
+  uiDirty[key] = value;
+  clearTimeout(uiTimer);
+  uiTimer = setTimeout(uiFlush, 400);
+}
+function uiFlush() {
+  const body = uiDirty; uiDirty = {};
+  if (Object.keys(body).length) api("POST", "/api/ui", body).catch(() => {});
+}
+addEventListener("pagehide", () => { clearTimeout(uiTimer); uiFlush(); });
+
+function saveOpen() { uiSet("open", S.open); }
 function openTab(id) { if (id && !S.open.includes(id)) { S.open.push(id); saveOpen(); } }
 
 // closes the tab of a card (the card stays – it is opened again from the overview)
@@ -196,7 +219,7 @@ function select(id) {
   if (prev && prev.id !== id && editing(prev.id)) { flushSave(prev); S.editing.delete(prev.id); }
   S.current = id;
   S.view = "card";
-  try { localStorage.setItem("lz-current", id); localStorage.setItem("lz-view", "card"); } catch {}
+  uiSet("current", id); uiSet("view", "card");
   renderTabs(); renderMain(); checkLocal();
   const j = S.jobs[id];
   if (j) watchJob(id); else hideActivity();
@@ -207,7 +230,7 @@ function showOverview() {
   const prev = cur();
   if (prev && editing(prev.id)) { flushSave(prev); S.editing.delete(prev.id); }
   S.view = "overview";
-  try { localStorage.setItem("lz-view", "overview"); } catch {}
+  uiSet("view", "overview");
   clearTimeout(S.pollTimer);
   S.jobTab = null;
   hideActivity();
@@ -802,10 +825,12 @@ async function bgPoll() {
   bgTimer = setTimeout(bgPoll, 500);
 }
 
+// collapsed groups in the overview – remembered per PC (uiSet)
 function collapsedGroups() {
-  try { return new Set(JSON.parse(localStorage.getItem("lz-collapsed") || "[]")); } catch { return new Set(); }
+  const v = uiGet("collapsed", []);
+  return new Set(Array.isArray(v) ? v : []);
 }
-function setCollapsed(set) { try { localStorage.setItem("lz-collapsed", JSON.stringify([...set])); } catch {} }
+function setCollapsed(set) { uiSet("collapsed", [...set]); }
 
 function renderOverview() {
   const n = S.tabs.length;

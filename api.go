@@ -101,6 +101,8 @@ func (a *API) Handler() http.Handler {
 	api.HandleFunc("GET /api/tabs/{id}/job", a.hJob)
 	api.HandleFunc("POST /api/tabs/{id}/openlog", a.hOpenLog)
 	api.HandleFunc("POST /api/settings", a.hSettings)
+	api.HandleFunc("GET /api/ui", a.hUIGet)
+	api.HandleFunc("POST /api/ui", a.hUISet)
 	api.HandleFunc("POST /api/master", a.hMaster)
 	api.HandleFunc("POST /api/pickdir", a.hPickDir)
 	api.HandleFunc("POST /api/pickexclude", a.hPickExclude)
@@ -211,6 +213,8 @@ func (a *API) hState(w http.ResponseWriter, r *http.Request) {
 		"version": appVersion,
 		"locked":  a.store.locked,
 		"dataDir": a.store.dir,
+		"ui":      a.store.loadUI(), // window state of this PC (uistate.go)
+		"pc":      pcName(),
 		"settings": map[string]any{
 			"theme":          a.store.cfg.Settings.Theme,
 			"workers":        a.store.cfg.Settings.Workers,
