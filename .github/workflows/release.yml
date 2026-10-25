@@ -1,0 +1,45 @@
+name: Release
+
+# A new version in main.go (const appVersion) pushed to main → builds Leonzilla.exe and
+# publishes the GitHub release vX.Y.Z with Leonzilla.zip (exe + guides + license).
+# Notes come from the "## X.Y.Z" section of CHANGELOG.md.
+
+on:
+  push:
+    branches: [main]
+    paths: [main.go]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: Version
+        id: v
+        run: |
+          v=$(sed -n 's/^const appVersion = "\(.*\)"/\1/p' main.go)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          if gh release view "v$v" >/dev/null 2>&1; then echo "exists=1" >> "$GITHUB_OUTPUT"; fi
+      - name: Build
+        if: steps.v.outputs.exists != '1'
+        run: |
+          mkdir dist
+          GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-H windowsgui -s -w" -o dist/Leonzilla.exe .
+          cp LICENSE dist/LICENSE.txt
+          cp docs/Leonzilla_manual.pdf docs/Leonzilla_navod.pdf dist/ 2>/dev/null || true
+          (cd dist && zip -9 ../Leonzilla.zip *)
+      - name: Publish
+        if: steps.v.outputs.exists != '1'
+        run: |
+          v=${{ steps.v.outputs.version }}
+          awk -v h="## $v" '$0 ~ "^## " {f = (index($0, h) == 1); next} f' CHANGELOG.md > notes.md
+          gh release create "v$v" Leonzilla.zip --title "Leonzilla $v" --notes-file notes.md

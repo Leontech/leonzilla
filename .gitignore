@@ -1,0 +1,14 @@
+# build output
+/dist/
+*.exe
+Leonzilla.zip
+
+# app data next to the exe – settings, server passwords, logs (never commit)
+Leonzilla_data/
+
+# editors / OS
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
+.DS_Store
