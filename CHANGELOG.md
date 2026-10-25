@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.7 – 2026-10-25
+
+- A card that only runs its own script (Build light, no server) now ends with *Script “…” finished without errors* instead of the misleading *nothing uploaded (build only)* – Leonzilla does not know whether the script uploads by itself. The *nothing uploaded* note stays for cards with a server when you choose *Build only*.
+
 ## 1.11.6 – 2026-10-25
 
 - **Card colour at the top of the card editor** (next to the group) – before it was only in the tab's right-click menu.

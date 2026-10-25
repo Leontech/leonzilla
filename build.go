@@ -792,6 +792,10 @@ func (r *Runner) runBuilds(ctx context.Context, j *Job, plans []*buildPlan) (str
 		}
 		j.logf("info", T("Build „%s“ hotový za %s"), b.Name, humanDur(time.Since(t0).Seconds()))
 	}
+	if len(plans) == 1 && plans[0].light != nil {
+		// only the card's own script: Leonzilla does not know what it does (it may upload by itself), so just say it went fine
+		return "ok", fmt.Sprintf(T("Skript „%s“ doběhl bez chyby"), filepath.Base(strings.Trim(strings.TrimSpace(plans[0].light.Script), `"`)))
+	}
 	return "ok", fmt.Sprintf(T("Build hotový (%d)"), len(plans))
 }
 

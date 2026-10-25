@@ -2079,6 +2079,7 @@ function openBuildWindow(id, kind) {
 async function pollBuildWindow() {
   if (!bw) return;
   const { id } = bw;
+  const bwTab = S.tabs.find((v) => v.id === id);
   const box = $("#overlay .modal.bw");
   if (!box) { bw = null; return; }
   let j;
@@ -2105,7 +2106,7 @@ async function pollBuildWindow() {
       ? j.result === "ok" ? ["ok", `Záloha hotová – ${fmtNum(j.filesDone)} souborů (${fmtBytes(j.bytesDone)} před zabalením)`]
         : j.result === "errors" ? ["warn", `Záloha hotová s chybami – ${fmtNum(j.filesFail)} souborů vynecháno (viz výpis)`]
         : j.result === "cancelled" ? ["warn", "Záloha přerušena – nedokončený ZIP smazán"] : ["err", bad ? `Selhalo: ${bad.note || bad.name}` : "Záloha se nepovedla"]
-      : j.result === "ok" ? ["ok", j.syncAfter ? `Hotovo – build i synchronizace (${fmtNum(j.filesDone)} souborů nahráno)` : "Build hotový – nic se nenahrávalo"]
+      : j.result === "ok" ? ["ok", j.syncAfter ? `Hotovo – build i synchronizace (${fmtNum(j.filesDone)} souborů nahráno)` : bwTab && syncReady(bwTab) ? "Build hotový – nic se nenahrávalo" : "Hotovo – doběhlo bez chyby"]
       : j.result === "cancelled" ? ["warn", "Přerušeno"] : ["err", bad ? `Selhalo: ${bad.note || bad.name}` : "Nepovedlo se – viz výpis"];
     sub.className = "bw-res " + r[0]; sub.textContent = r[1];
     $("#bw-stop").hidden = true;

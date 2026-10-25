@@ -32,6 +32,7 @@ var enCatalog = map[string]string{
 	"@@ nový soubor, %d řádků @@\n":         "@@ new file, %d lines @@\n",
 	"Aplikace je zamčená hlavním heslem":    "The app is locked with the master password",
 	"Build hotový (%d)":                     "Build finished (%d)",
+	"Skript „%s“ doběhl bez chyby":          "Script “%s” finished without errors",
 	"Build light „%s“ hotový za %s":         "Build light “%s” finished in %s",
 	"Build „%s“ hotový za %s":               "Build “%s” finished in %s",
 	"Během synchronizace nejde kartu měnit": "The card cannot be changed during synchronization",

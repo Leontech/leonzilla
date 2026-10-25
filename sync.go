@@ -405,7 +405,9 @@ func (r *Runner) run(ctx context.Context, j *Job, tab *Tab, workers int) {
 	} else if j.Build && j.Sync {
 		j.setStep(len(j.Steps)-1, "skipped", "")
 	}
-	if res == "ok" && j.Build && !j.Sync {
+	if res == "ok" && j.Build && !j.Sync && tabCanSync(tab) {
+		// only when the card could sync and the user chose "build only"; a card without a server says nothing about
+		// uploading – its script may upload by itself
 		msg = msg + T(" – nic se nenahrávalo (jen build)")
 	}
 	j.mu.Lock()
@@ -933,4 +935,17 @@ func humanDur(s float64) string {
 		return fmt.Sprintf("%.1f s", s)
 	}
 	return fmt.Sprintf("%d min %d s", int(s)/60, int(s)%60)
+}
+
+// tabCanSync: the card has a server and at least one enabled folder pair (same as syncReady in the UI)
+func tabCanSync(t *Tab) bool {
+	if t == nil || strings.TrimSpace(t.Conn.Host) == "" {
+		return false
+	}
+	for _, p := range t.Pairs {
+		if p != nil && p.Enabled && strings.TrimSpace(p.Local) != "" {
+			return true
+		}
+	}
+	return false
 }

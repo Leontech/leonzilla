@@ -493,6 +493,7 @@ I18N.add(/*BEGIN*/{
  "Záloha se nepovedla": "Backup failed",
  "Hotovo – build i synchronizace ({} souborů nahráno)": "Done – build and synchronization ({} files uploaded)",
  "Build hotový – nic se nenahrávalo": "Build finished – nothing was uploaded",
+ "Hotovo – doběhlo bez chyby": "Done – finished without errors",
  "Přerušeno": "Cancelled",
  "Nepovedlo se – viz výpis": "Failed – see the output",
  "Během synchronizace nejde kartu upravovat": "The card cannot be edited during synchronization",
