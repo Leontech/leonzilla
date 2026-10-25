@@ -145,7 +145,7 @@ The UI is written in Czech; English is applied at run time from `ui/lang_en.js` 
 
 ## Feedback and support
 
-Bugs and ideas: [GitHub Issues](https://github.com/Leontech/leonzilla/issues). Author: **Leoš Vilím** – [leotech.cz](https://leotech.cz).
+Bugs and ideas: a short [form on leotech.cz](https://leotech.cz/download?fb=leonzilla&lang=en#leonzilla) (no account needed – also in the app: About → Report a bug / idea) or [GitHub Issues](https://github.com/Leontech/leonzilla/issues). Author: **Leoš Vilím** – [leotech.cz](https://leotech.cz).
 
 Leonzilla is free. If it saves you time, you can [buy me a coffee on Ko-fi ☕](https://ko-fi.com/leotechcz) – thank you!
 

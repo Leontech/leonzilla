@@ -118,7 +118,7 @@ Podrobnosti o struktuře projektu, testovacích nástrojích a překladech jsou 
 
 ## Zpětná vazba a podpora
 
-Chyby a nápady: [GitHub Issues](https://github.com/Leontech/leonzilla/issues). Autor: **Leoš Vilím** – [leotech.cz](https://leotech.cz).
+Chyby a nápady: krátký [formulář na leotech.cz](https://leotech.cz/download?fb=leonzilla#leonzilla) (bez účtu – i v aplikaci: O aplikaci → Nahlásit chybu / nápad) nebo [GitHub Issues](https://github.com/Leontech/leonzilla/issues). Autor: **Leoš Vilím** – [leotech.cz](https://leotech.cz).
 
 Leonzilla je zdarma. Když vám šetří čas, můžete mi [koupit kafe na Ko-fi ☕](https://ko-fi.com/leotechcz) – děkuju!
 

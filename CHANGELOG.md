@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.1 – 2026-10-25
+
+- **Report a bug / idea** in the About window now opens a short form on [leotech.cz](https://leotech.cz/download#leonzilla) with the program and version filled in – no GitHub account needed (GitHub Issues still work too).
+
 ## 1.11.0 – 2026-10-25
 
 First public release.

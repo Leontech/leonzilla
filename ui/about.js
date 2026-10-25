@@ -3,6 +3,8 @@
 
 const LZ_REPO = "https://github.com/Leontech/leonzilla";
 const LZ_AUTHOR_WEB = "https://leotech.cz";
+// "Report a bug / idea": form on leotech.cz (no GitHub account needed), opens with the program and version filled in
+const lzFeedbackUrl = () => `https://leotech.cz/download?fb=leonzilla&v=${encodeURIComponent(S.version || "")}&lang=${I18N.lang === "en" ? "en" : "cs"}#leonzilla`;
 // "Support development" link (Ko-fi / Buy Me a Coffee / GitHub Sponsors …); empty = the button is hidden
 const LZ_SUPPORT_URL = "https://ko-fi.com/leotechcz";
 
@@ -31,7 +33,7 @@ async function openAbout() {
       <div class="about-links">
         <a href="${LZ_REPO}" data-url>${icon("branch")}<span>Zdrojový kód na GitHubu</span></a>
         <a href="${LZ_REPO}/releases/latest" data-url>${icon("up")}<span>Nejnovější verze</span></a>
-        <a href="${LZ_REPO}/issues" data-url>${icon("help")}<span>Nahlásit chybu / nápad</span></a>
+        <a href="${esc(lzFeedbackUrl())}" data-url>${icon("help")}<span>Nahlásit chybu / nápad</span></a>
       </div>
       ${LZ_SUPPORT_URL ? `<a class="about-support" href="${esc(LZ_SUPPORT_URL)}" data-url><span class="cup">☕</span><span><b>Podpořit vývoj</b><small>Leonzilla je zdarma. Když vám šetří čas, můžete autorovi koupit kafe.</small></span></a>` : ""}
       <a class="about-author" href="${LZ_AUTHOR_WEB}" data-url title="leotech.cz">
