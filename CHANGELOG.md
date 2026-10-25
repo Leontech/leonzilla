@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.6 – 2026-10-25
+
+- **Card colour at the top of the card editor** (next to the group) – before it was only in the tab's right-click menu.
+
 ## 1.11.5 – 2026-10-25
 
 - Build light: the build list and the confirmation show the real script type (*Python*, *BAT*, *CMD*, *PowerShell*) instead of always *Python*.

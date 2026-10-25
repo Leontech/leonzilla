@@ -191,7 +191,7 @@ function helpHTMLen() {
           <div>${k("Ctrl")}+${k("Enter")}<span>in a commit message = Commit + Push</span></div>
           <div>${k("Esc")}<span>closes a window / dialog</span></div>
           <div>${k("Ctrl")}+${k("W")}<span>closes the card tab (the card stays in the Overview)</span></div>
-          <div>${k("right click")}<span>on a tab or tile: edit, duplicate, colour, delete</span></div>
+          <div>${k("right click")}<span>on a tab or tile: edit, duplicate, colour, delete (the colour can also be changed at the top of the card editor)</span></div>
           <div>${k("double click")}<span>on the tab of a card being edited = rename</span></div>
         </div>
         <ul class="hp-list">

@@ -520,6 +520,10 @@ function renderMain() {
         <select id="f-group"><option value="">Bez skupiny</option>${groups().map((g) => `<option value="${g.id}" ${g.id === groupOf(t) ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select>
         <button class="plain small" id="btn-groups">Spravovat skupiny</button>
       </div>
+      <div class="hero-group hero-color">
+        <span class="lbl">Barva karty</span>
+        <div class="colors" id="f-colors" role="radiogroup" aria-label="Barva karty">${S.colors.map((col) => `<button type="button" data-c="${col}" style="--c:${col}" role="radio" aria-pressed="${col === t.color}" aria-checked="${col === t.color}" title="Barva karty"></button>`).join("")}</div>
+      </div>
     </section>
 
     <section class="sec">
@@ -762,6 +766,14 @@ function pairMenu(t, i, x, y) {
 function bindMain(t) {
   const c = t.conn;
   $("#title").oninput = (e) => { t.name = e.target.value; renderTabsName(t); scheduleSave(t); };
+  // card colour right at the top of the edit form (also in the tab's right-click menu)
+  $("#f-colors").onclick = (e) => {
+    const b = e.target.closest("button[data-c]");
+    if (!b || b.dataset.c === t.color) return;
+    t.color = b.dataset.c;
+    $("#f-colors").querySelectorAll("button").forEach((x) => { const on = x === b; x.setAttribute("aria-pressed", on); x.setAttribute("aria-checked", on); });
+    renderTabs(); saveTab(t);
+  };
   $("#title").onkeydown = (e) => { if (e.key === "Enter") e.target.blur(); };
   $("#btn-add-pair").onclick = () => { t.pairs.push({ id: "", local: "", remote: "", enabled: true, excludes: [] }); renderPairs(); scheduleSave(t, 0); };
 

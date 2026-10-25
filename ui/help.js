@@ -192,7 +192,7 @@ function helpHTMLcs() {
           <div>${k("Ctrl")}+${k("Enter")}<span>v popisu commitu = Commit + Push</span></div>
           <div>${k("Esc")}<span>zavře okno / dialog</span></div>
           <div>${k("Ctrl")}+${k("W")}<span>zavře záložku karty (karta zůstane v Přehledu)</span></div>
-          <div>${k("pravé tlačítko")}<span>na záložce či dlaždici: upravit, duplikovat, barva, smazat</span></div>
+          <div>${k("pravé tlačítko")}<span>na záložce či dlaždici: upravit, duplikovat, barva, smazat (barva jde změnit i nahoře v úpravách karty)</span></div>
           <div>${k("dvojklik")}<span>na záložku upravované karty = přejmenovat</span></div>
         </div>
         <ul class="hp-list">
