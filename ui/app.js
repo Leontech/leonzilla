@@ -33,6 +33,8 @@ const builds = () => S.settings.builds || [];
 const cardBuilds = (t) => (t.builds || []).map((id) => builds().find((b) => b.id === id)).filter(Boolean);
 // "Build light": the card's own Python script run like a build (then upload)
 const hasLight = (t) => !!(t.buildLight && (t.buildLight.script || "").trim());
+// own label of the main button (build light), e.g. "Build a nahrát na web"; "" = default label
+const lightLabel = (t) => (hasLight(t) ? (t.buildLight.label || "").trim() : "");
 const lightName = (t) => (t.buildLight?.script || "").trim().replace(/^"|"$/g, "").split(/[\\/]/).pop();
 const hasBuilds = (t) => cardBuilds(t).length > 0 || hasLight(t);
 const buildNames = (t) => [...cardBuilds(t).map((b) => b.name), ...(hasLight(t) ? [lightName(t)] : [])];
@@ -55,7 +57,7 @@ const cardUnset = (t) => !syncSet(t) && !hasBuilds(t) && !hasBackups(t) && !hasG
 const syncReady = (t) => !!(t.conn.host && t.pairs.some((p) => p.enabled && (p.local || "").trim()));
 const syncHalfText = (t) => (t.conn.host ? "chybí zapnutá složka v PC" : "chybí server") + " – doplň ho, nebo dvojici složek odeber, pokud karta synchronizovat nemá";
 const mainMode = (t) => (hasBuilds(t) ? (syncReady(t) ? "buildsync" : "build") : syncReady(t) ? "sync" : "");
-const mainLabel = (t) => ({ buildsync: "Build + Synchronizovat", build: "Build", sync: "Synchronizovat" }[mainMode(t)] || "");
+const mainLabel = (t) => { const m = mainMode(t); if ((m === "buildsync" || m === "build") && lightLabel(t)) return lightLabel(t); return { buildsync: "Build + Synchronizovat", build: "Build", sync: "Synchronizovat" }[m] || ""; };
 const groupOf = (t) => (groups().some((g) => g.id === t.group) ? t.group : "");
 const groupName = (id) => groups().find((g) => g.id === id)?.name || "";
 // cards in display order: by group (settings order, "no group" last), then by card order
@@ -525,6 +527,8 @@ function renderMain() {
           ${S.canPickDir ? `<button id="f-lscript-pick" title="Vybrat skript">${icon("file")}</button>` : ""}</div></div>
         <div class="f c12"><label for="f-largs">Parametry skriptu <span class="note">– nepovinné, např. <code>--release</code></span></label>
           <input id="f-largs" value="${esc(t.buildLight?.args || "")}" spellcheck="false" placeholder="bez parametrů"></div>
+        <div class="f c12"><label for="f-llabel">Popisek tlačítka <span class="note">– nepovinné, např. <i>Build a nahrát na leotech.cz</i> · prázdné = výchozí popisek</span></label>
+          <input id="f-llabel" value="${esc(t.buildLight?.label || "")}" maxlength="60" spellcheck="false" placeholder="${syncReady(t) ? "Build + Synchronizovat" : "Build"}"></div>
       </div>
     </details>
 
@@ -1688,12 +1692,13 @@ function openGitWindow(t) {
 /* ------------------------------------------------------------------ Build light (Python script) */
 
 function bindLight(t) {
-  const sc = $("#f-lscript"), ar = $("#f-largs");
+  const sc = $("#f-lscript"), ar = $("#f-largs"), ll = $("#f-llabel");
   if (!sc) return;
-  const cfg = () => (t.buildLight ||= { script: "", args: "" });
+  const cfg = () => (t.buildLight ||= { script: "", args: "", label: "" });
   const hint = () => { $("#light-hint").textContent = hasLight(t) ? lightName(t) : "nepovinné – vlastní Python skript místo buildu RAD Studia"; updateSyncButton(); };
   sc.oninput = () => { cfg().script = sc.value.trim(); hint(); scheduleSave(t); };
   ar.oninput = () => { cfg().args = ar.value; scheduleSave(t); };
+  if (ll) ll.oninput = () => { cfg().label = ll.value; updateSyncButton(); scheduleSave(t); };
   $("#f-lscript-pick")?.addEventListener("click", async () => {
     try {
       const r = await api("POST", "/api/pickfile", { title: tr("Vyber Python skript"), start: sc.value, filterName: tr("Python skript (*.py)"), filterSpec: "*.py" });
@@ -2289,7 +2294,7 @@ async function confirmSync(t, mode) {
   const checks = doSync ? t.checklist || [] : [];
   const bl = doBuild ? cardBuilds(t) : [];
   const lt = doBuild && hasLight(t);
-  const title = { buildsync: "Build + Synchronizovat", sync: "Synchronizovat", build: syncReady(t) ? "Jen build" : "Build" }[mode];
+  const title = lightLabel(t) && (mode === "buildsync" || (mode === "build" && !syncReady(t))) ? lightLabel(t) : { buildsync: "Build + Synchronizovat", sync: "Synchronizovat", build: syncReady(t) ? "Jen build" : "Build" }[mode];
   modal(`
     <div class="modal-h"><h3>${title} „${esc(t.name)}“?</h3>
       <p>${doSync ? `${esc(t.conn.user ? t.conn.user + "@" : "")}${esc(t.conn.host)} · ${PROTO[t.conn.protocol]}` : bl.length ? "Zkompiluje se, nic se nenahraje." : "Spustí se skript, nic se nenahraje."}</p></div>

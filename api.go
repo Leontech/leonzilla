@@ -389,7 +389,7 @@ func (a *API) hUpdateTab(w http.ResponseWriter, r *http.Request) {
 	}
 	if u.BuildLight != nil {
 		u.BuildLight.normalize()
-		if u.BuildLight.Script == "" && u.BuildLight.Args == "" {
+		if u.BuildLight.Script == "" && u.BuildLight.Args == "" && u.BuildLight.Label == "" {
 			t.BuildLight = nil // section emptied
 		} else {
 			t.BuildLight = u.BuildLight

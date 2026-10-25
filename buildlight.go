@@ -16,13 +16,18 @@ import (
 )
 
 type BuildLight struct {
-	Script string `json:"script"`         // path to the .py script (another file type runs via cmd)
-	Args   string `json:"args,omitempty"` // parameters for the script
+	Script string `json:"script"`          // path to the .py script (another file type runs via cmd)
+	Args   string `json:"args,omitempty"`  // parameters for the script
+	Label  string `json:"label,omitempty"` // own text of the main card button, e.g. "Build and upload to my web" (empty = default)
 }
 
 func (b *BuildLight) normalize() {
 	b.Script = strings.Trim(strings.TrimSpace(b.Script), `"`)
 	b.Args = strings.TrimSpace(b.Args)
+	b.Label = strings.Join(strings.Fields(b.Label), " ")
+	if r := []rune(b.Label); len(r) > 60 {
+		b.Label = string(r[:60])
+	}
 }
 
 func (b *BuildLight) name() string { return filepath.Base(b.Script) }

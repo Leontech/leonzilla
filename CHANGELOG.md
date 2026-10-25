@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.2 – 2026-10-25
+
+- **Own button label for Build light**: *Card settings → Build light → Button label*, e.g. *Build and upload to my web*. The main card button then shows this text instead of *Build + Synchronize* / *Build* – handy for a script that uploads by itself (such as publishing a program to a website); such a card needs no server or folders.
+
 ## 1.11.1 – 2026-10-25
 
 - **Report a bug / idea** in the About window now opens a short form on [leotech.cz](https://leotech.cz/download#leonzilla) with the program and version filled in – no GitHub account needed (GitHub Issues still work too).
