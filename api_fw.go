@@ -34,9 +34,7 @@ func (a *API) hFwRun(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, err)
 		return
 	}
-	a.store.mu.Lock()
-	req.StopDB = req.StopDB || a.store.cfg.Settings.StopDropbox // "stop Dropbox during builds" applies to FW builds too (1.11.12)
-	a.store.mu.Unlock()
+	req.StopDB = req.StopDB || tab.Dropbox == "stop" // card setting "Dropbox při buildu: vždy vypnout"
 	if err := a.fw.Start(tab, req); err != nil {
 		writeErr(w, 409, err)
 		return

@@ -225,7 +225,6 @@ func (a *API) hState(w http.ResponseWriter, r *http.Request) {
 			"compiler":       a.store.cfg.Settings.Compiler,
 			"compilerFound":  resolveCompiler(a.store.cfg.Settings.Compiler),
 			"stopDropbox":    a.store.cfg.Settings.StopDropbox,
-			"watchDropbox":   a.store.cfg.Settings.WatchDropbox == nil || *a.store.cfg.Settings.WatchDropbox,
 			"ignoreOutput":   a.store.cfg.Settings.IgnoreOutput == nil || *a.store.cfg.Settings.IgnoreOutput,
 			"versionInfoVar": a.store.cfg.Settings.VersionInfoVar,
 			"langSetting":    a.store.cfg.Settings.Lang,
@@ -319,6 +318,7 @@ type tabUpdate struct {
 	BuildLight     *BuildLight       `json:"buildLight"`
 	Git            []*GitRepo        `json:"git"`
 	GitPull        *bool             `json:"gitPull"`
+	Dropbox        *string           `json:"dropbox"`
 	Conn           struct {
 		Protocol    string  `json:"protocol"`
 		Host        string  `json:"host"`
@@ -356,6 +356,9 @@ func (a *API) hUpdateTab(w http.ResponseWriter, r *http.Request) {
 		t.Color = u.Color
 	}
 	t.SafeUpload = u.SafeUpload
+	if u.Dropbox != nil {
+		t.Dropbox = normDropboxMode(*u.Dropbox)
+	}
 	t.Group = ""
 	for _, g := range a.store.cfg.Settings.Groups {
 		if g.ID == u.Group {
@@ -781,7 +784,6 @@ func (a *API) hSettings(w http.ResponseWriter, r *http.Request) {
 		Workers        int
 		Compiler       *string
 		StopDropbox    *bool
-		WatchDropbox   *bool
 		IgnoreOutput   *bool
 		VersionInfoVar *string
 		Lang           *string // "cs" | "en" | "" (by Windows)
@@ -807,10 +809,6 @@ func (a *API) hSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.StopDropbox != nil {
 		a.store.cfg.Settings.StopDropbox = *req.StopDropbox
-	}
-	if req.WatchDropbox != nil {
-		v := *req.WatchDropbox
-		a.store.cfg.Settings.WatchDropbox = &v
 	}
 	if req.IgnoreOutput != nil {
 		v := *req.IgnoreOutput

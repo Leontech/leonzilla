@@ -597,12 +597,11 @@ func (r *Runner) runBuilds(ctx context.Context, j *Job, plans []*buildPlan) (str
 	infoVar := r.store.cfg.Settings.VersionInfoVar
 	r.store.mu.Unlock()
 
-	heavy := false // a RAD Studio build (kept for logging; Dropbox is stopped for any build since 1.11.12)
+	heavy := false // a RAD Studio build (the global "stop Dropbox" setting applies only to these)
 	for _, p := range plans {
 		heavy = heavy || p.b != nil
 	}
-	_ = heavy
-	if stopDB || j.stopDB { // the setting or the choice in the Dropbox check – any build (RAD, own script) since 1.11.12
+	if (stopDB && heavy) || j.stopDB { // global setting (RAD builds) or the card's Dropbox choice / the answer in the Dropbox check
 		if stopDropbox(j.logf) {
 			defer startDropbox(j.logf) // also after a failure, cancel or panic
 		}

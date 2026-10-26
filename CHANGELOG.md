@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.14 – 2026-10-26
+
+- The Dropbox check is now **per card** instead of one global setting: *Edit card → Dropbox* – *don't watch* (default), *check pause, otherwise ask*, or *always stop it for the build*. It applies to the card's own script, FW build (ESP32) and RAD Studio builds; synchronization, backups and GitHub are never affected.
+
 ## 1.11.13 – 2026-10-26
 
 - **Dropbox check before a build** (App settings → Builds, on by default) for all builds – RAD Studio, own script and FW build (ESP32). Dropbox touches files even in ignored folders, and builds then fail with "file is being used by another process". If Dropbox runs and syncing is not paused, Leonzilla asks before the build: **stop Dropbox for the build** (it is back and up to date within seconds) or pause it yourself. *Next time stop it automatically* – or the setting *Always stop Dropbox during a build* – skips the question.

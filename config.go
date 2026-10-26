@@ -42,11 +42,9 @@ type Settings struct {
 	Lang string `json:"lang,omitempty"`
 	// IgnoreOutput: exclude the build output folder (TMSWeb) from Dropbox sync. nil = default (on).
 	IgnoreOutput *bool `json:"ignoreOutput,omitempty"`
-	// StopDropbox: stop Dropbox during every build – RAD, own script, FW (only if it runs) and start it again afterwards. Default off.
+	// StopDropbox: stop Dropbox during RAD Studio builds of every card (only if it runs) and start it again afterwards. Default off.
+	// Per card (own script, FW, RAD): Tab.Dropbox.
 	StopDropbox bool `json:"stopDropbox,omitempty"`
-	// WatchDropbox: before every build (RAD Studio, own script, FW) check whether Dropbox runs and is not paused –
-	// then the UI asks (pause / stop Dropbox for the build / cancel). nil = on (1.11.11).
-	WatchDropbox *bool `json:"watchDropbox,omitempty"`
 	// Master password (optional). When set, server passwords are encrypted with it.
 	MasterSalt  string `json:"masterSalt,omitempty"`
 	MasterCheck string `json:"masterCheck,omitempty"`
@@ -85,6 +83,17 @@ type Tab struct {
 	LastGit    *SyncSummary `json:"lastGit,omitempty"`
 	SafeUpload bool         `json:"safeUpload"` // upload to temp name, then rename
 	LastSync   *SyncSummary `json:"lastSync,omitempty"`
+	// Dropbox during this card's builds (own script, FW ESP32, RAD Studio – not sync / backup / GitHub):
+	// "" = nothing, "ask" = check before the build whether Dropbox runs and is paused (ask if not), "stop" = always stop
+	// it for the build and start it again (1.11.14; before it was one global setting)
+	Dropbox string `json:"dropbox,omitempty"`
+}
+
+func normDropboxMode(m string) string {
+	if m == "ask" || m == "stop" {
+		return m
+	}
+	return ""
 }
 
 type Conn struct {

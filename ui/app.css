@@ -193,6 +193,8 @@ button.link { border: 0; background: none; padding: 0 0 0 6px; color: var(--focu
 .hero-group { grid-column: 1; display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 13px; color: var(--muted); }
 .hero-group > label, .hero-group > .lbl { min-width: 76px; }
 .hero-color .colors { padding: 0; gap: 7px; }
+.hero-dropbox select { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 5px 8px; min-width: 250px; }
+.hero-dropbox .note { font-size: 12px; }
 .hero-color .colors button { width: 20px; height: 20px; transition: transform .12s; }
 .hero-color .colors button:hover { transform: scale(1.12); }
 .hero-group select { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); padding: 5px 8px; min-width: 180px; }

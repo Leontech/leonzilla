@@ -285,7 +285,7 @@ func (r *Runner) Start(tabID string, o StartOpts) (*Job, error) {
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	j := &Job{TabID: tabID, Preview: o.Preview, Force: o.Force, Build: o.Build, Sync: o.Sync, Backup: o.Backup, stopDB: o.StopDropbox, Phase: "connecting",
+	j := &Job{TabID: tabID, Preview: o.Preview, Force: o.Force, Build: o.Build, Sync: o.Sync, Backup: o.Backup, stopDB: o.StopDropbox || (o.Build && tab.Dropbox == "stop"), Phase: "connecting",
 		Started: time.Now(), cancel: cancel, active: map[int]string{}, lastT: time.Now(), Log: []LogLine{}, Steps: []*Step{}}
 	if o.Backup {
 		bp, err := prepareBackups(j, tab, o.Notes, o.Names, o.Only)

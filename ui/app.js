@@ -531,6 +531,15 @@ function renderMain() {
         <span class="lbl">Barva karty</span>
         <div class="colors" id="f-colors" role="radiogroup" aria-label="Barva karty">${S.colors.map((col) => `<button type="button" data-c="${col}" style="--c:${col}" role="radio" aria-pressed="${col === t.color}" aria-checked="${col === t.color}" title="Barva karty"></button>`).join("")}</div>
       </div>
+      <div class="hero-group hero-dropbox">
+        <label for="f-dropbox">Dropbox</label>
+        <select id="f-dropbox">
+          <option value="" ${!t.dropbox ? "selected" : ""}>nehlídat</option>
+          <option value="ask" ${t.dropbox === "ask" ? "selected" : ""}>zkontrolovat pauzu, jinak se zeptat</option>
+          <option value="stop" ${t.dropbox === "stop" ? "selected" : ""}>vždy vypnout na dobu buildu</option>
+        </select>
+        <span class="note">při buildu: vlastní skript, FW ESP32, RAD Studio</span>
+      </div>
     </section>
 
     <section class="sec">
@@ -773,6 +782,7 @@ function pairMenu(t, i, x, y) {
 function bindMain(t) {
   const c = t.conn;
   $("#title").oninput = (e) => { t.name = e.target.value; renderTabsName(t); scheduleSave(t); };
+  $("#f-dropbox").onchange = (e) => { t.dropbox = e.target.value; scheduleSave(t, 0); };
   // card colour right at the top of the edit form (also in the tab's right-click menu)
   $("#f-colors").onclick = (e) => {
     const b = e.target.closest("button[data-c]");
@@ -1962,7 +1972,7 @@ function openFwWindow(t, monOnly = false) {
       if (variant() && !variant().id) await saveTab(t); // fetch the id assigned by the server
       const vid = variant()?.id || "";
       let stopDropbox = false;
-      if (st.action !== "monitor") { const g = await dropboxGate(); if (!g) return; stopDropbox = g.stop; }
+      if (st.action !== "monitor") { const g = await dropboxGate(t); if (!g) return; stopDropbox = g.stop; }
       await api("POST", `/api/tabs/${t.id}/fw/run`, { stopDropbox, variant: vid, action: st.action, port: st.port, cleanCfg: $("#fw-clean", box).checked, reconfigure: $("#fw-reconf", box).checked });
       f.lastVariant = vid; f.lastAction = st.action; if (st.port) f.lastPort = st.port;
       if (st.action !== "monitor") { f.lastClean = $("#fw-clean", box).checked; f.lastReconfigure = $("#fw-reconf", box).checked; } // remembered per card
@@ -2455,7 +2465,7 @@ async function startJob(t, o) {
   const preview = !!o.preview;
   let stopDropbox = false;
   if (o.build && !preview) {
-    const g = await dropboxGate();
+    const g = await dropboxGate(t);
     if (!g) return;
     stopDropbox = g.stop;
   }
@@ -2715,9 +2725,8 @@ function openSettings(focus = false) {
           <button id="s-compiler-pick" title="Vybrat soubor">${icon("file")}</button></div>
         <label class="check" style="margin-top:8px"><input type="checkbox" id="s-ignoreout" ${s.ignoreOutput !== false ? "checked" : ""}>Výstup buildu (složku TMSWeb v projektu) vyřadit z Dropboxu</label>
         <span class="note">Dropbox jinak zamyká čerstvě zkompilované soubory a kompilace skončí chybou „soubor využívá jiný proces“. Vyřazená složka zůstane na tomto PC, z Dropboxu a ostatních PC zmizí.</span>
-        <label class="check"><input type="checkbox" id="s-watchdb" ${s.watchDropbox !== false ? "checked" : ""}>Před buildem hlídat Dropbox – když běží a není pozastavený, zeptat se (pozastavit / vypnout na dobu buildu)</label>
-        <label class="check"><input type="checkbox" id="s-stopdb" ${s.stopDropbox ? "checked" : ""}>Během buildu Dropbox vždy vypnout a pak znovu spustit – bez ptaní</label>
-        <span class="note">Platí pro všechny buildy: RAD Studio, vlastní skript i FW build (ESP32). Dropbox sahá na soubory i ve vyřazených složkách a build pak může spadnout na „soubor využívá jiný proces“. Pozastavení se pozná z popisku ikony Dropboxu u hodin. Po vypnutí je Dropbox do pár sekund zpět a synchronizovaný.</span>
+        <label class="check"><input type="checkbox" id="s-stopdb" ${s.stopDropbox ? "checked" : ""}>Navíc během buildu RAD Studia Dropbox vypnout a pak znovu spustit (u všech karet)</label>
+        <span class="note">Hlídání Dropboxu u jednotlivé karty (vlastní skript, FW ESP32, RAD Studio): Upravit kartu → <i>Dropbox</i> – nehlídat / zkontrolovat pauzu / vždy vypnout.</span>
         <label for="s-vivar" style="margin-top:8px">Proměnná prostředí pro Info k verzi</label>
         <input id="s-vivar" value="${esc(s.versionInfoVar || "")}" placeholder="LEONZILLA_VERSION_INFO" spellcheck="false" maxlength="60" style="max-width:320px">
         <span class="note">Info k verzi dostane post-build vždy v proměnné LEONZILLA_VERSION_INFO. Když ho skript projektu čte pod jiným názvem, napiš ho sem – nastaví se obě.</span>
@@ -2836,10 +2845,6 @@ function openSettings(focus = false) {
         toast(on ? "Leonzilla se bude spouštět s Windows (minimalizovaně)" : "Spouštění s Windows vypnuto");
       } catch (er) { e.target.checked = !on; toast(er.message, true); }
     });
-    $("#s-watchdb", box).onchange = (e) => {
-      s.watchDropbox = e.target.checked;
-      api("POST", "/api/settings", { theme: s.theme, workers: s.workers, watchDropbox: s.watchDropbox }).catch((er) => toast(er.message, true));
-    };
     $("#s-stopdb", box).onchange = (e) => {
       s.stopDropbox = e.target.checked;
       api("POST", "/api/settings", { theme: s.theme, workers: s.workers, stopDropbox: s.stopDropbox }).catch((er) => toast(er.message, true));
@@ -2870,8 +2875,8 @@ function openSettings(focus = false) {
 /* Dropbox check before a build (setting "Před buildem hlídat Dropbox", default on):
    Dropbox touches files even in ignored folders and the build then fails on "file is being used by another process".
    null = cancelled, {stop:false} = go, {stop:true} = go and stop Dropbox for the build (started again afterwards). */
-async function dropboxGate() {
-  if (S.settings.watchDropbox === false || S.settings.stopDropbox) return { stop: false }; // stopDropbox: the server stops it itself
+async function dropboxGate(t) {
+  if (t?.dropbox !== "ask") return { stop: false }; // "" = not watched, "stop" = the server stops Dropbox itself
   let st;
   try { st = await api("GET", "/api/dropbox"); } catch { return { stop: false }; }
   if (!st.running || (st.known && st.paused)) return { stop: false };
@@ -2883,8 +2888,8 @@ async function dropboxGate() {
         <p>Dropbox sahá na soubory i ve vyřazených složkách a build pak může spadnout na <i>„soubor využívá jiný proces“</i>.</p>
         <p>Leonzilla ho může <b>na dobu buildu vypnout</b> a pak znovu spustit (za pár sekund je zpět), nebo ho <b>pozastav</b> sám (ikona Dropboxu u hodin → Pozastavit synchronizaci).</p>
         ${st.tray ? `<p class="tray" translate="no">${esc(st.tray)}</p>` : ""}
-        <label class="check"><input type="checkbox" id="db-always">Příště vypínat Dropbox automaticky, bez ptaní</label>
-        <p><button type="button" class="link" data-r="off" title="Nastavení aplikace → Buildy">Už se neptat (Dropbox nehlídat)</button></p>
+        <label class="check"><input type="checkbox" id="db-always">U této karty příště vypínat Dropbox automaticky, bez ptaní</label>
+        <p><button type="button" class="link" data-r="off" title="Upravit kartu → Dropbox">U této karty Dropbox nehlídat</button></p>
       </div>
       <div class="modal-f">
         <button class="ghost" data-r="cancel">Zrušit</button>
@@ -2901,16 +2906,14 @@ async function dropboxGate() {
       if (r === "cancel") return done(null);
       if (r === "stop") {
         if (ov.querySelector("#db-always")?.checked) {
-          S.settings.stopDropbox = true;
-          api("POST", "/api/settings", { theme: S.settings.theme, workers: S.settings.workers, stopDropbox: true }).catch(() => {});
-          toast("Dropbox se při buildu vypne automaticky (Nastavení aplikace → Buildy)");
+          t.dropbox = "stop"; saveTab(t);
+          toast("U této karty se Dropbox při buildu vypne automaticky (Upravit kartu → Dropbox)");
         }
         return done({ stop: true });
       }
       if (r === "off") {
-        S.settings.watchDropbox = false;
-        api("POST", "/api/settings", { theme: S.settings.theme, workers: S.settings.workers, watchDropbox: false }).catch(() => {});
-        toast("Dropbox se před buildem už nehlídá (zapneš v Nastavení aplikace → Buildy)");
+        t.dropbox = ""; saveTab(t);
+        toast("U této karty se Dropbox už nehlídá (Upravit kartu → Dropbox)");
         return done({ stop: false });
       }
       // "paused, go on" – check once more; if the tooltip still does not say "paused" (or is in a language Leonzilla
