@@ -1883,8 +1883,8 @@ function openFwWindow(t, monOnly = false) {
         <div class="fw-row" ${monOnly ? "hidden" : ""}><span class="lab">Varianta</span><div class="seg fwseg" id="fw-var">${f.variants.map((v, i) => `<button type="button" data-v="${i}">${esc(v.name || "?")}</button>`).join("")}</div></div>
         <div class="fw-row" ${monOnly ? "hidden" : ""}><span class="lab">Akce</span><div class="seg fwseg" id="fw-act">${ACTS.map(([k, n]) => `<button type="button" data-a="${k}">${n}</button>`).join("")}</div></div>
         <div class="fw-row"><span class="lab">Port</span><select id="fw-port"></select><button type="button" class="icon-btn small" id="fw-ports" title="Znovu načíst porty">↻</button><span class="note" id="fw-portnote"></span></div>
-        <label class="check fw-clean"><input type="checkbox" id="fw-clean"><span>Clean config – před buildem smazat <code id="fw-cleanpath"></code> <span class="note">(po změně sdkconfig.defaults / profilu / Kconfig)</span></span></label>
-        <label class="check fw-clean fw-reconf"><input type="checkbox" id="fw-reconf" checked><span>Reconfigure – před buildem spustit <code id="fw-reconfcmd"></code> <span class="note">(znovu načte CMake / sdkconfig)</span></span></label>
+        <label class="check fw-clean"><input type="checkbox" id="fw-clean" ${f.lastClean ? "checked" : ""}><span>Clean config – před buildem smazat <code id="fw-cleanpath"></code> <span class="note">(po změně sdkconfig.defaults / profilu / Kconfig)</span></span></label>
+        <label class="check fw-clean fw-reconf"><input type="checkbox" id="fw-reconf" ${f.lastReconfigure === false ? "" : "checked"}><span>Reconfigure – před buildem spustit <code id="fw-reconfcmd"></code> <span class="note">(znovu načte CMake / sdkconfig)</span></span></label>
       </fieldset>
       <ol class="bsteps" id="fw-steps"></ol>
       <div class="fw-logwrap">
@@ -1943,6 +1943,9 @@ function openFwWindow(t, monOnly = false) {
   box.querySelectorAll("#fw-var [data-v]").forEach((b) => (b.onclick = () => { st.vi = +b.dataset.v; drawCtl(); }));
   box.querySelectorAll("#fw-act [data-a]").forEach((b) => (b.onclick = () => { if (!b.disabled) { st.action = b.dataset.a; drawCtl(); } }));
   $("#fw-port", box).onchange = (e) => (st.port = e.target.value);
+  // Clean config / Reconfigure: the card remembers them for next time (also without running)
+  const saveChecks = () => { f.lastClean = $("#fw-clean", box).checked; f.lastReconfigure = $("#fw-reconf", box).checked; scheduleSave(t); };
+  $("#fw-clean", box).onchange = saveChecks; $("#fw-reconf", box).onchange = saveChecks;
   $("#fw-ports", box).onclick = loadPorts;
   $("#fw-hide", box).onclick = () => st.close();
   $("#fw-term", box).onclick = () => api("POST", `/api/tabs/${t.id}/fw/terminal`).catch((e) => toast(e.message, true));
@@ -1958,9 +1961,11 @@ function openFwWindow(t, monOnly = false) {
       await flushSave(t);
       if (variant() && !variant().id) await saveTab(t); // fetch the id assigned by the server
       const vid = variant()?.id || "";
-      await api("POST", `/api/tabs/${t.id}/fw/run`, { variant: vid, action: st.action, port: st.port, cleanCfg: $("#fw-clean", box).checked, reconfigure: $("#fw-reconf", box).checked });
+      let stopDropbox = false;
+      if (st.action !== "monitor") { const g = await dropboxGate(); if (!g) return; stopDropbox = g.stop; }
+      await api("POST", `/api/tabs/${t.id}/fw/run`, { stopDropbox, variant: vid, action: st.action, port: st.port, cleanCfg: $("#fw-clean", box).checked, reconfigure: $("#fw-reconf", box).checked });
       f.lastVariant = vid; f.lastAction = st.action; if (st.port) f.lastPort = st.port;
-      $("#fw-clean", box).checked = false; // clean config is a one-off
+      if (st.action !== "monitor") { f.lastClean = $("#fw-clean", box).checked; f.lastReconfigure = $("#fw-reconf", box).checked; } // remembered per card
       st.seen = 0; $("#fw-log", box).innerHTML = "";
       S.fwRunning[t.id] = "building";
       poll();
@@ -2448,9 +2453,15 @@ async function runPreview(t) {
 
 async function startJob(t, o) {
   const preview = !!o.preview;
+  let stopDropbox = false;
+  if (o.build && !preview) {
+    const g = await dropboxGate();
+    if (!g) return;
+    stopDropbox = g.stop;
+  }
   try {
     await flushSave(t);
-    await api("POST", `/api/tabs/${t.id}/sync`, { preview, force: !!o.force, build: !!o.build, backup: !!o.backup, notes: o.notes || [], names: o.names || [], only: o.only || null, buildInfo: o.buildInfo || null, sync: o.sync !== false });
+    await api("POST", `/api/tabs/${t.id}/sync`, { stopDropbox, preview, force: !!o.force, build: !!o.build, backup: !!o.backup, notes: o.notes || [], names: o.names || [], only: o.only || null, buildInfo: o.buildInfo || null, sync: o.sync !== false });
     S.jobs[t.id] = o.backup ? "scanning" : o.build ? "building" : "connecting";
     if (o.build || o.backup) openBuildWindow(t.id, o.backup ? "backup" : "build");
     S.jobData[t.id] = null;
@@ -2704,7 +2715,9 @@ function openSettings(focus = false) {
           <button id="s-compiler-pick" title="Vybrat soubor">${icon("file")}</button></div>
         <label class="check" style="margin-top:8px"><input type="checkbox" id="s-ignoreout" ${s.ignoreOutput !== false ? "checked" : ""}>Výstup buildu (složku TMSWeb v projektu) vyřadit z Dropboxu</label>
         <span class="note">Dropbox jinak zamyká čerstvě zkompilované soubory a kompilace skončí chybou „soubor využívá jiný proces“. Vyřazená složka zůstane na tomto PC, z Dropboxu a ostatních PC zmizí.</span>
-        <label class="check"><input type="checkbox" id="s-stopdb" ${s.stopDropbox ? "checked" : ""}>Navíc během buildu Dropbox vypnout a pak znovu spustit (pomalé – jen kdyby vyřazení nestačilo)</label>
+        <label class="check"><input type="checkbox" id="s-watchdb" ${s.watchDropbox !== false ? "checked" : ""}>Před buildem hlídat Dropbox – když běží a není pozastavený, zeptat se (pozastavit / vypnout na dobu buildu)</label>
+        <label class="check"><input type="checkbox" id="s-stopdb" ${s.stopDropbox ? "checked" : ""}>Během buildu Dropbox vždy vypnout a pak znovu spustit – bez ptaní</label>
+        <span class="note">Platí pro všechny buildy: RAD Studio, vlastní skript i FW build (ESP32). Dropbox sahá na soubory i ve vyřazených složkách a build pak může spadnout na „soubor využívá jiný proces“. Pozastavení se pozná z popisku ikony Dropboxu u hodin. Po vypnutí je Dropbox do pár sekund zpět a synchronizovaný.</span>
         <label for="s-vivar" style="margin-top:8px">Proměnná prostředí pro Info k verzi</label>
         <input id="s-vivar" value="${esc(s.versionInfoVar || "")}" placeholder="LEONZILLA_VERSION_INFO" spellcheck="false" maxlength="60" style="max-width:320px">
         <span class="note">Info k verzi dostane post-build vždy v proměnné LEONZILLA_VERSION_INFO. Když ho skript projektu čte pod jiným názvem, napiš ho sem – nastaví se obě.</span>
@@ -2823,6 +2836,10 @@ function openSettings(focus = false) {
         toast(on ? "Leonzilla se bude spouštět s Windows (minimalizovaně)" : "Spouštění s Windows vypnuto");
       } catch (er) { e.target.checked = !on; toast(er.message, true); }
     });
+    $("#s-watchdb", box).onchange = (e) => {
+      s.watchDropbox = e.target.checked;
+      api("POST", "/api/settings", { theme: s.theme, workers: s.workers, watchDropbox: s.watchDropbox }).catch((er) => toast(er.message, true));
+    };
     $("#s-stopdb", box).onchange = (e) => {
       s.stopDropbox = e.target.checked;
       api("POST", "/api/settings", { theme: s.theme, workers: s.workers, stopDropbox: s.stopDropbox }).catch((er) => toast(er.message, true));
@@ -2849,6 +2866,68 @@ function openSettings(focus = false) {
 }
 
 /* ------------------------------------------------------------------ modal helper */
+
+/* Dropbox check before a build (setting "Před buildem hlídat Dropbox", default on):
+   Dropbox touches files even in ignored folders and the build then fails on "file is being used by another process".
+   null = cancelled, {stop:false} = go, {stop:true} = go and stop Dropbox for the build (started again afterwards). */
+async function dropboxGate() {
+  if (S.settings.watchDropbox === false || S.settings.stopDropbox) return { stop: false }; // stopDropbox: the server stops it itself
+  let st;
+  try { st = await api("GET", "/api/dropbox"); } catch { return { stop: false }; }
+  if (!st.running || (st.known && st.paused)) return { stop: false };
+  return new Promise((resolve) => {
+    const ov = $("#overlay2");
+    ov.innerHTML = `<div class="modal dbgate" role="dialog" aria-modal="true">
+      <div class="modal-h"><h3>Dropbox běží</h3><p>${st.known ? "Synchronizace není pozastavená." : "Nepodařilo se zjistit, jestli je pozastavený."}</p></div>
+      <div class="modal-b">
+        <p>Dropbox sahá na soubory i ve vyřazených složkách a build pak může spadnout na <i>„soubor využívá jiný proces“</i>.</p>
+        <p>Leonzilla ho může <b>na dobu buildu vypnout</b> a pak znovu spustit (za pár sekund je zpět), nebo ho <b>pozastav</b> sám (ikona Dropboxu u hodin → Pozastavit synchronizaci).</p>
+        ${st.tray ? `<p class="tray" translate="no">${esc(st.tray)}</p>` : ""}
+        <label class="check"><input type="checkbox" id="db-always">Příště vypínat Dropbox automaticky, bez ptaní</label>
+        <p><button type="button" class="link" data-r="off" title="Nastavení aplikace → Buildy">Už se neptat (Dropbox nehlídat)</button></p>
+      </div>
+      <div class="modal-f">
+        <button class="ghost" data-r="cancel">Zrušit</button>
+        <button class="ghost" data-r="go">Pozastaveno, pokračovat</button>
+        <button class="primary" data-r="stop">Vypnout Dropbox na dobu buildu</button>
+      </div></div>`;
+    ov.hidden = false;
+    const done = (r) => { ov.hidden = true; ov.innerHTML = ""; document.removeEventListener("keydown", onKey, true); resolve(r); };
+    const onKey = (e) => { if (e.key === "Escape") { e.stopPropagation(); done(null); } };
+    document.addEventListener("keydown", onKey, true);
+    ov.onmousedown = (e) => { if (e.target === ov) done(null); };
+    ov.querySelectorAll("[data-r]").forEach((b) => (b.onclick = async () => {
+      const r = b.dataset.r;
+      if (r === "cancel") return done(null);
+      if (r === "stop") {
+        if (ov.querySelector("#db-always")?.checked) {
+          S.settings.stopDropbox = true;
+          api("POST", "/api/settings", { theme: S.settings.theme, workers: S.settings.workers, stopDropbox: true }).catch(() => {});
+          toast("Dropbox se při buildu vypne automaticky (Nastavení aplikace → Buildy)");
+        }
+        return done({ stop: true });
+      }
+      if (r === "off") {
+        S.settings.watchDropbox = false;
+        api("POST", "/api/settings", { theme: S.settings.theme, workers: S.settings.workers, watchDropbox: false }).catch(() => {});
+        toast("Dropbox se před buildem už nehlídá (zapneš v Nastavení aplikace → Buildy)");
+        return done({ stop: false });
+      }
+      // "paused, go on" – check once more; if the tooltip still does not say "paused" (or is in a language Leonzilla
+      // does not know), warn once and let the second click go on anyway
+      if (b.dataset.sure) return done({ stop: false });
+      const again = await api("GET", "/api/dropbox").catch(() => null);
+      if (again && again.running && !(again.known && again.paused)) {
+        ov.querySelector(".modal-h p").innerHTML = "<b>Dropbox pořád nehlásí pozastavení.</b> Pozastav ho, nebo pokračuj přesto.";
+        const t2 = ov.querySelector(".tray"); if (t2 && again.tray) t2.textContent = again.tray;
+        b.dataset.sure = "1"; b.textContent = tr("Přesto pokračovat");
+        return;
+      }
+      done({ stop: false });
+    }));
+    ov.querySelector('[data-r="stop"]').focus();
+  });
+}
 
 function modal(html, bind, wide = false) {
   const ov = $("#overlay");

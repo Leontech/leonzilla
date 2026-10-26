@@ -5,8 +5,10 @@ package main
 import (
 	"errors"
 	"log"
+	"os"
 	"os/exec"
 	"runtime"
+	"strings"
 	"syscall"
 )
 
@@ -51,6 +53,25 @@ func lockHolders(string) []string { return nil }
 func stopDropbox(func(kind, format string, a ...any)) bool { return false }
 func startDropbox(func(kind, format string, a ...any))     {}
 func restoreDropboxAfterCrash()                            {}
+
+// dropboxStatus: outside Windows only for tests – LEONZILLA_FAKE_DROPBOX=running | paused | "running:<tray text>"
+func dropboxStatus() DropboxStatus {
+	f := os.Getenv("LEONZILLA_FAKE_DROPBOX")
+	if f == "" {
+		return DropboxStatus{}
+	}
+	st := DropboxStatus{Running: true}
+	switch {
+	case f == "paused":
+		st.Tray = "Dropbox | Syncing paused"
+	case strings.HasPrefix(f, "running:"):
+		st.Tray = strings.TrimPrefix(f, "running:")
+	}
+	if st.Tray != "" {
+		st.Known, st.Paused = true, dropboxPausedRe.MatchString(st.Tray)
+	}
+	return st
+}
 
 func dropboxIgnored(string) bool     { return true }
 func setDropboxIgnored(string) error { return nil }

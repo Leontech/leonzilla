@@ -123,6 +123,7 @@ func (a *API) Handler() http.Handler {
 	})
 	api.HandleFunc("POST /api/localcheck", a.hLocalCheck)
 	api.HandleFunc("GET /api/git/info", a.hGitInfo)
+	api.HandleFunc("GET /api/dropbox", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, dropboxStatus()) })
 	api.HandleFunc("GET /api/serialports", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, map[string]any{"ports": listSerialPorts()}) })
 	api.HandleFunc("POST /api/fw/detect", a.hFwDetect)
 	api.HandleFunc("POST /api/tabs/{id}/fw/run", a.hFwRun)
@@ -224,6 +225,7 @@ func (a *API) hState(w http.ResponseWriter, r *http.Request) {
 			"compiler":       a.store.cfg.Settings.Compiler,
 			"compilerFound":  resolveCompiler(a.store.cfg.Settings.Compiler),
 			"stopDropbox":    a.store.cfg.Settings.StopDropbox,
+			"watchDropbox":   a.store.cfg.Settings.WatchDropbox == nil || *a.store.cfg.Settings.WatchDropbox,
 			"ignoreOutput":   a.store.cfg.Settings.IgnoreOutput == nil || *a.store.cfg.Settings.IgnoreOutput,
 			"versionInfoVar": a.store.cfg.Settings.VersionInfoVar,
 			"langSetting":    a.store.cfg.Settings.Lang,
@@ -724,6 +726,7 @@ func (a *API) hSync(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Preview, Force, Build, Backup bool
 		Sync                          *bool
+		StopDropbox                   bool // the user chose "stop Dropbox for this build" in the Dropbox check
 		Notes                         []string
 		Only                          []int
 		Names                         []string
@@ -732,7 +735,7 @@ func (a *API) hSync(w http.ResponseWriter, r *http.Request) {
 	_ = readJSON(r, &req)
 	id := r.PathValue("id")
 	a.dropBrowse(id)
-	o := StartOpts{Preview: req.Preview, Force: req.Force, Build: req.Build, Backup: req.Backup, Notes: req.Notes, Only: req.Only, Names: req.Names, BuildInfo: req.BuildInfo, Sync: req.Sync == nil || *req.Sync}
+	o := StartOpts{Preview: req.Preview, Force: req.Force, Build: req.Build, Backup: req.Backup, Notes: req.Notes, Only: req.Only, Names: req.Names, BuildInfo: req.BuildInfo, Sync: req.Sync == nil || *req.Sync, StopDropbox: req.StopDropbox}
 	if _, err := a.runner.Start(id, o); err != nil {
 		writeErr(w, 409, err)
 		return
@@ -778,6 +781,7 @@ func (a *API) hSettings(w http.ResponseWriter, r *http.Request) {
 		Workers        int
 		Compiler       *string
 		StopDropbox    *bool
+		WatchDropbox   *bool
 		IgnoreOutput   *bool
 		VersionInfoVar *string
 		Lang           *string // "cs" | "en" | "" (by Windows)
@@ -803,6 +807,10 @@ func (a *API) hSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.StopDropbox != nil {
 		a.store.cfg.Settings.StopDropbox = *req.StopDropbox
+	}
+	if req.WatchDropbox != nil {
+		v := *req.WatchDropbox
+		a.store.cfg.Settings.WatchDropbox = &v
 	}
 	if req.IgnoreOutput != nil {
 		v := *req.IgnoreOutput

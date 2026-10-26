@@ -28,6 +28,8 @@ type FwConfig struct {
 	LastVariant string `json:"lastVariant,omitempty"`
 	LastAction  string `json:"lastAction,omitempty"`
 	LastPort    string `json:"lastPort,omitempty"`
+	LastClean   bool   `json:"lastClean,omitempty"`       // "Clean config" checked last time
+	LastReconf  *bool  `json:"lastReconfigure,omitempty"` // "Reconfigure" last time (nil = default on)
 }
 
 type FwVariant struct {
@@ -189,6 +191,7 @@ type fwRunReq struct {
 	Port     string `json:"port"`
 	CleanCfg bool   `json:"cleanCfg"`
 	Reconfig bool   `json:"reconfigure"` // run "<script> reconfigure" before the build
+	StopDB   bool   `json:"stopDropbox"` // stop Dropbox during build + flash (chosen in the Dropbox check)
 }
 
 var fwActions = map[string][3]bool{ // build, flash, monitor
@@ -290,11 +293,11 @@ func (m *FwManager) Start(tab *Tab, req fwRunReq) error {
 	if do[2] {
 		add("monitor", "Monitor "+port)
 	}
-	go m.run(ctx, s, tab, c, v, profile, do, req.CleanCfg, steps)
+	go m.run(ctx, s, tab, c, v, profile, do, req.CleanCfg, req.StopDB, steps)
 	return nil
 }
 
-func (m *FwManager) run(ctx context.Context, s *fwSession, tab *Tab, c *FwConfig, v *FwVariant, profile string, do [3]bool, clean bool, steps map[string]int) {
+func (m *FwManager) run(ctx context.Context, s *fwSession, tab *Tab, c *FwConfig, v *FwVariant, profile string, do [3]bool, clean, stopDB bool, steps map[string]int) {
 	j := s.j
 	result := "ok"
 	defer func() {
@@ -336,6 +339,19 @@ func (m *FwManager) run(ctx context.Context, s *fwSession, tab *Tab, c *FwConfig
 	}
 	if profile != "" && do[0] {
 		j.logf("info", "ESP-IDF: %s", profile)
+	}
+
+	// Dropbox stopped for build + flash on request (Dropbox check), started again before the monitor / at the end
+	dbStopped := false
+	restartDB := func() {
+		if dbStopped {
+			dbStopped = false
+			startDropbox(j.logf)
+		}
+	}
+	defer restartDB()
+	if stopDB && do[0] {
+		dbStopped = stopDropbox(j.logf)
 	}
 
 	if i, ok := steps["clean"]; ok {
@@ -399,6 +415,7 @@ func (m *FwManager) run(ctx context.Context, s *fwSession, tab *Tab, c *FwConfig
 			return
 		}
 	}
+	restartDB()
 	if do[2] {
 		i := steps["monitor"]
 		j.setStep(i, "running", "")

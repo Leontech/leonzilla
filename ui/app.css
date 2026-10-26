@@ -381,6 +381,9 @@ details.sec[open] > summary .sec-h svg { transform: rotate(90deg); }
 
 /* ---------- modal ---------- */
 .overlay { position: fixed; inset: 0; background: color-mix(in srgb, #000 38%, transparent); display: grid; place-items: center; z-index: 50; padding: 20px; }
+.overlay.top { z-index: 60; } /* question above an open window (Dropbox check over the FW window) */
+.dbgate .modal-b p { margin: 0 0 8px; }
+.dbgate .tray { font: 12px var(--mono); color: var(--faint); }
 .modal { background: var(--surface); border-radius: 14px; box-shadow: var(--shadow); width: min(560px, 100%); max-height: 86vh; display: flex; flex-direction: column; animation: pop .14s ease-out; }
 .modal.wide { width: min(820px, 100%); }
 @keyframes pop { from { transform: scale(.97); opacity: 0; } }
@@ -688,7 +691,7 @@ button.fw-btn.tiny { height: 24px; padding: 0 9px; font-size: 12px; border-radiu
 button.fw-btn.live { box-shadow: 0 0 0 3px color-mix(in srgb, var(--fw) 35%, transparent); animation: pulse 1.4s ease-in-out infinite; }
 .tile-actions button.fw-btn { flex: 1; justify-content: center; height: 38px; border-radius: 9px; }
 .fwvars { display: flex; flex-direction: column; gap: 6px; margin: 4px 0 8px; }
-.fwv { display: grid; grid-template-columns: 140px minmax(0, 1fr) 150px auto auto; gap: 8px; align-items: center; }
+.fwv { display: grid; grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1fr) auto auto; gap: 8px; align-items: center; } /* build folder as wide as the script (1.11.9) */
 .fwv.head span { font-size: 11.5px; color: var(--faint); text-transform: uppercase; letter-spacing: .05em; }
 .fwv input:not([type]) , .fwv input[data-k="name"], .fwv input[data-k="script"], .fwv input[data-k="buildDir"] { height: 32px; font: 12.5px var(--mono); }
 .fwv .check { white-space: nowrap; font-size: 12.5px; }

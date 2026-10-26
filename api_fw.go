@@ -34,6 +34,9 @@ func (a *API) hFwRun(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 404, err)
 		return
 	}
+	a.store.mu.Lock()
+	req.StopDB = req.StopDB || a.store.cfg.Settings.StopDropbox // "stop Dropbox during builds" applies to FW builds too (1.11.12)
+	a.store.mu.Unlock()
 	if err := a.fw.Start(tab, req); err != nil {
 		writeErr(w, 409, err)
 		return
@@ -44,6 +47,10 @@ func (a *API) hFwRun(w http.ResponseWriter, r *http.Request) {
 		t.Fw.LastVariant, t.Fw.LastAction = req.Variant, req.Action
 		if strings.TrimSpace(req.Port) != "" {
 			t.Fw.LastPort = strings.TrimSpace(req.Port)
+		}
+		if req.Action != "monitor" { // checkboxes are hidden for "monitor only"
+			rc := req.Reconfig
+			t.Fw.LastClean, t.Fw.LastReconf = req.CleanCfg, &rc
 		}
 		_ = a.store.saveLocked()
 	}

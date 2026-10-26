@@ -55,6 +55,7 @@ type Job struct {
 	Build   bool      `json:"build"`     // run the card's builds first
 	Backup  bool      `json:"backup"`    // zip backup (no synchronization)
 	Sync    bool      `json:"syncAfter"` // synchronize (after the builds)
+	stopDB  bool      // stop Dropbox during the builds (chosen in the Dropbox check)
 	Steps   []*Step   `json:"steps"`
 	Phase   string    `json:"phase"` // building | connecting | scanning | uploading | done
 	Result  string    `json:"result,omitempty"`
@@ -246,6 +247,7 @@ type StartOpts struct {
 	Names          []string          // backup: own zip name per backup (same order as Tab.Backups), e.g. "fw-160" → fw-160.zip
 	BuildInfo      map[string]string // build ID → "Info k verzi" for this run (overrides the build setting)
 	Sync           bool              // synchronize (always true unless "only build")
+	StopDropbox    bool              // stop Dropbox during the builds for this run (chosen in the Dropbox check)
 }
 
 func newRunner(s *Store) *Runner { return &Runner{store: s, jobs: map[string]*Job{}} }
@@ -283,7 +285,7 @@ func (r *Runner) Start(tabID string, o StartOpts) (*Job, error) {
 		}
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	j := &Job{TabID: tabID, Preview: o.Preview, Force: o.Force, Build: o.Build, Sync: o.Sync, Backup: o.Backup, Phase: "connecting",
+	j := &Job{TabID: tabID, Preview: o.Preview, Force: o.Force, Build: o.Build, Sync: o.Sync, Backup: o.Backup, stopDB: o.StopDropbox, Phase: "connecting",
 		Started: time.Now(), cancel: cancel, active: map[int]string{}, lastT: time.Now(), Log: []LogLine{}, Steps: []*Step{}}
 	if o.Backup {
 		bp, err := prepareBackups(j, tab, o.Notes, o.Names, o.Only)

@@ -42,8 +42,11 @@ type Settings struct {
 	Lang string `json:"lang,omitempty"`
 	// IgnoreOutput: exclude the build output folder (TMSWeb) from Dropbox sync. nil = default (on).
 	IgnoreOutput *bool `json:"ignoreOutput,omitempty"`
-	// StopDropbox: also stop Dropbox during builds (only if it runs) and start it again afterwards. Default off.
+	// StopDropbox: stop Dropbox during every build – RAD, own script, FW (only if it runs) and start it again afterwards. Default off.
 	StopDropbox bool `json:"stopDropbox,omitempty"`
+	// WatchDropbox: before every build (RAD Studio, own script, FW) check whether Dropbox runs and is not paused –
+	// then the UI asks (pause / stop Dropbox for the build / cancel). nil = on (1.11.11).
+	WatchDropbox *bool `json:"watchDropbox,omitempty"`
 	// Master password (optional). When set, server passwords are encrypted with it.
 	MasterSalt  string `json:"masterSalt,omitempty"`
 	MasterCheck string `json:"masterCheck,omitempty"`

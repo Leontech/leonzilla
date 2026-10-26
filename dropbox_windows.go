@@ -8,6 +8,7 @@ package main
 // A marker file makes sure it is started again even if Leonzilla is closed / crashes meanwhile.
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"os"
@@ -170,4 +171,48 @@ func dropboxIgnored(p string) bool {
 
 func setDropboxIgnored(p string) error {
 	return os.WriteFile(p+dropboxIgnoreStream, []byte("1"), 0o644)
+}
+
+// --- "Watch Dropbox before a build" (1.11.11): is Dropbox running, and is it paused?
+// Dropbox has no API for its pause state, so the tooltip of its tray icon is read through UI Automation
+// (PowerShell + UIAutomationClient). Best effort: the icon may be hidden in the overflow area, the text
+// depends on the Dropbox language. If it cannot be read, Paused stays unknown and the UI asks the user.
+
+const dropboxTrayPS = `$ErrorActionPreference='SilentlyContinue'
+[Console]::OutputEncoding=[Text.Encoding]::UTF8
+Add-Type -AssemblyName UIAutomationClient,UIAutomationTypes
+$A=[System.Windows.Automation.AutomationElement]; $S=[System.Windows.Automation.TreeScope]; $T=[System.Windows.Automation.Condition]::TrueCondition
+$out=@()
+foreach($cls in 'Shell_TrayWnd','NotifyIconOverflowWindow','TopLevelWindowForOverflowXamlIsland'){
+  $c=New-Object System.Windows.Automation.PropertyCondition($A::ClassNameProperty,$cls)
+  foreach($w in $A::RootElement.FindAll($S::Children,$c)){
+    foreach($e in $w.FindAll($S::Descendants,$T)){ $n=$e.Current.Name; if($n -match 'Dropbox'){ $out+=($n -replace '[\r\n]+',' | ') } }
+  }
+}
+$out -join [char]10`
+
+func dropboxTrayText() string {
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", dropboxTrayPS)
+	prepareCmd(cmd)
+	b, err := cmd.Output()
+	if err != nil && len(b) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(strings.TrimPrefix(string(b), "\ufeff"))
+}
+
+func dropboxStatus() DropboxStatus {
+	pids, _ := dropboxPIDs()
+	st := DropboxStatus{Running: len(pids) > 0}
+	if !st.Running {
+		return st
+	}
+	st.Tray = dropboxTrayText()
+	if st.Tray != "" {
+		st.Known = true
+		st.Paused = dropboxPausedRe.MatchString(st.Tray)
+	}
+	return st
 }
