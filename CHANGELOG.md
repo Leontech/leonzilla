@@ -1,22 +1,12 @@
 # Changelog
 
-## 1.11.12 – 2026-10-26
+## 1.11.13 – 2026-10-26
 
-- Dropbox check: **Stop Dropbox for the build** is now the main choice (Dropbox is back and up to date within seconds), with *Next time stop it automatically, without asking*. The setting *Always stop Dropbox during a build* now applies to all builds (RAD Studio, own script, FW ESP32), not only RAD Studio.
-- The "paused" text of the Dropbox tray icon is recognised in more languages (incl. German, Dutch, Polish, Russian, Japanese, Chinese, Korean). If the language is not recognised, *Paused, continue* warns once and then lets you continue anyway.
-
-## 1.11.11 – 2026-10-26
-
-- **Dropbox check before a build** (App settings → Builds, on by default) for all builds – RAD Studio, own script and FW build (ESP32): if Dropbox runs and syncing is not paused, Leonzilla asks before the build – pause it and continue, or stop Dropbox for the build and start it again afterwards. Dropbox touches files even in ignored folders, and builds then fail with "file is being used by another process". The paused state is read from the tooltip of the Dropbox tray icon ("Syncing paused"); if it cannot be read, Leonzilla asks every time.
-
-## 1.11.10 – 2026-10-26
-
-- *FW build* window: **Clean config** and **Reconfigure** are remembered per card – they stay as you left them last time (before, Clean config was always unchecked and Reconfigure always checked).
-- Card settings → *FW build and monitor*: the **build folder** column of the variants is now as wide as the script column, so longer paths fit.
-
-## 1.11.9 – 2026-10-26
-
-- Fix: in the *FW build* window both variants could look selected (and the run got no variant) after adding a variant with *Add variant* in the same session – the id assigned on save was not passed back to the open card. Variants are now picked by position and the id is fetched before the run.
+- **Dropbox check before a build** (App settings → Builds, on by default) for all builds – RAD Studio, own script and FW build (ESP32). Dropbox touches files even in ignored folders, and builds then fail with "file is being used by another process". If Dropbox runs and syncing is not paused, Leonzilla asks before the build: **stop Dropbox for the build** (it is back and up to date within seconds) or pause it yourself. *Next time stop it automatically* – or the setting *Always stop Dropbox during a build* – skips the question.
+- The paused state is read from the tooltip of the Dropbox tray icon ("Syncing paused") in several languages; if it cannot be recognised, *Paused, continue* warns once and then lets you continue anyway.
+- *FW build* window: **Clean config** and **Reconfigure** are remembered per card.
+- Card settings → *FW build and monitor*: the **build folder** column is as wide as the script column, so longer paths fit.
+- Fix: in the *FW build* window both variants could look selected (and the run got no variant) after adding a variant with *Add variant* in the same session.
 
 ## 1.11.8 – 2026-10-25
 

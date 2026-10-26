@@ -2,12 +2,13 @@ name: Release
 
 # A new version in main.go (const appVersion) pushed to main → builds Leonzilla.exe and
 # publishes the GitHub release vX.Y.Z with Leonzilla.zip (exe + guides + license).
-# Notes come from the "## X.Y.Z" section of CHANGELOG.md.
+# Notes come from the "## X.Y.Z" section of CHANGELOG.md. A change of CHANGELOG.md alone updates the notes
+# of an existing release (fixing a typo in the release notes needs no new version).
 
 on:
   push:
     branches: [main]
-    paths: [main.go]
+    paths: [main.go, CHANGELOG.md]
   workflow_dispatch:
 
 permissions:
@@ -43,3 +44,9 @@ jobs:
           v=${{ steps.v.outputs.version }}
           awk -v h="## $v" '$0 ~ "^## " {f = (index($0, h) == 1); next} f' CHANGELOG.md > notes.md
           gh release create "v$v" Leonzilla.zip --title "Leonzilla $v" --notes-file notes.md
+      - name: Update notes of the existing release
+        if: steps.v.outputs.exists == '1'
+        run: |
+          v=${{ steps.v.outputs.version }}
+          awk -v h="## $v" '$0 ~ "^## " {f = (index($0, h) == 1); next} f' CHANGELOG.md > notes.md
+          gh release edit "v$v" --notes-file notes.md
