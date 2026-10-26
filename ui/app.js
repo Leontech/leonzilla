@@ -278,6 +278,7 @@ async function saveTab(tab) {
     fresh.pairs.forEach((p, i) => { if (tab.pairs[i] && !tab.pairs[i].id) tab.pairs[i].id = p.id; });
     (fresh.backups || []).forEach((b, i) => { if (tab.backups?.[i] && !tab.backups[i].id) tab.backups[i].id = b.id; });
     (fresh.git || []).forEach((g, i) => { if (tab.git?.[i] && !tab.git[i].id) tab.git[i].id = g.id; });
+    (fresh.fw?.variants || []).forEach((v, i) => { const mine = tab.fw?.variants?.[i]; if (mine && !mine.id) mine.id = v.id; });
     setSaveState("Uloženo");
     delete (S.saveRetry ||= {})[tab.id];
   } catch (e) {
@@ -1869,7 +1870,9 @@ function openFwWindow(t, monOnly = false) {
   if (!hasFw(t)) monOnly = true;
   const f = t.fw;
   f.variants = f.variants || [];
-  const st = { id: t.id, seen: 0, timer: null, variant: f.lastVariant && f.variants.some((v) => v.id === f.lastVariant) ? f.lastVariant : f.variants[0]?.id || "",
+  // variants are picked by position: a just-added variant may not have its id yet (it is assigned on save)
+  const lastVi = f.lastVariant ? f.variants.findIndex((v) => v.id === f.lastVariant) : -1;
+  const st = { id: t.id, seen: 0, timer: null, vi: lastVi >= 0 ? lastVi : 0,
     action: monOnly ? "monitor" : f.lastAction && f.lastAction !== "monitor" ? f.lastAction : "flashmon", port: f.lastPort || "", hist: [], hi: -1, phase: "", running: false };
   fwWin = st;
   const ACTS = [["build", "Build"], ["flash", "Build + Nahrát"], ["flashmon", "Build + Nahrát + Monitor"], ["monitor", "Jen monitor"]];
@@ -1877,7 +1880,7 @@ function openFwWindow(t, monOnly = false) {
     <div class="modal-h"><h3>${monOnly ? "Monitor" : "FW build"} „${esc(t.name)}“</h3><p class="mono" style="font-size:12px">${monOnly ? `sériová konzole zařízení · ${f.baud || 115200} Bd` : esc(f.project)}</p></div>
     <div class="modal-b fw-b">
       <fieldset class="fw-ctl" id="fw-ctl">
-        <div class="fw-row" ${monOnly ? "hidden" : ""}><span class="lab">Varianta</span><div class="seg fwseg" id="fw-var">${f.variants.map((v) => `<button type="button" data-v="${esc(v.id)}">${esc(v.name || "?")}</button>`).join("")}</div></div>
+        <div class="fw-row" ${monOnly ? "hidden" : ""}><span class="lab">Varianta</span><div class="seg fwseg" id="fw-var">${f.variants.map((v, i) => `<button type="button" data-v="${i}">${esc(v.name || "?")}</button>`).join("")}</div></div>
         <div class="fw-row" ${monOnly ? "hidden" : ""}><span class="lab">Akce</span><div class="seg fwseg" id="fw-act">${ACTS.map(([k, n]) => `<button type="button" data-a="${k}">${n}</button>`).join("")}</div></div>
         <div class="fw-row"><span class="lab">Port</span><select id="fw-port"></select><button type="button" class="icon-btn small" id="fw-ports" title="Znovu načíst porty">↻</button><span class="note" id="fw-portnote"></span></div>
         <label class="check fw-clean"><input type="checkbox" id="fw-clean"><span>Clean config – před buildem smazat <code id="fw-cleanpath"></code> <span class="note">(po změně sdkconfig.defaults / profilu / Kconfig)</span></span></label>
@@ -1909,9 +1912,9 @@ function openFwWindow(t, monOnly = false) {
   }, true);
   const box = st.box;
   box.classList.add("fw");
-  const variant = () => f.variants.find((v) => v.id === st.variant);
+  const variant = () => f.variants[st.vi];
   const drawCtl = () => {
-    box.querySelectorAll("#fw-var [data-v]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.v === st.variant));
+    box.querySelectorAll("#fw-var [data-v]").forEach((b) => b.setAttribute("aria-pressed", +b.dataset.v === st.vi));
     const v = variant();
     if (v?.noFlash && st.action !== "build" && st.action !== "monitor") st.action = "build";
     box.querySelectorAll("#fw-act [data-a]").forEach((b) => {
@@ -1937,7 +1940,7 @@ function openFwWindow(t, monOnly = false) {
       $("#fw-portnote", box).textContent = ports.length ? "" : "Připoj zařízení přes USB a dej ↻";
     } catch (e) { $("#fw-portnote", box).textContent = e.message; }
   };
-  box.querySelectorAll("#fw-var [data-v]").forEach((b) => (b.onclick = () => { st.variant = b.dataset.v; drawCtl(); }));
+  box.querySelectorAll("#fw-var [data-v]").forEach((b) => (b.onclick = () => { st.vi = +b.dataset.v; drawCtl(); }));
   box.querySelectorAll("#fw-act [data-a]").forEach((b) => (b.onclick = () => { if (!b.disabled) { st.action = b.dataset.a; drawCtl(); } }));
   $("#fw-port", box).onchange = (e) => (st.port = e.target.value);
   $("#fw-ports", box).onclick = loadPorts;
@@ -1953,8 +1956,10 @@ function openFwWindow(t, monOnly = false) {
   $("#fw-go", box).onclick = async () => {
     try {
       await flushSave(t);
-      await api("POST", `/api/tabs/${t.id}/fw/run`, { variant: st.variant, action: st.action, port: st.port, cleanCfg: $("#fw-clean", box).checked, reconfigure: $("#fw-reconf", box).checked });
-      f.lastVariant = st.variant; f.lastAction = st.action; if (st.port) f.lastPort = st.port;
+      if (variant() && !variant().id) await saveTab(t); // fetch the id assigned by the server
+      const vid = variant()?.id || "";
+      await api("POST", `/api/tabs/${t.id}/fw/run`, { variant: vid, action: st.action, port: st.port, cleanCfg: $("#fw-clean", box).checked, reconfigure: $("#fw-reconf", box).checked });
+      f.lastVariant = vid; f.lastAction = st.action; if (st.port) f.lastPort = st.port;
       $("#fw-clean", box).checked = false; // clean config is a one-off
       st.seen = 0; $("#fw-log", box).innerHTML = "";
       S.fwRunning[t.id] = "building";

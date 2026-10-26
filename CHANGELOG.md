@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.9 – 2026-10-26
+
+- Fix: in the *FW build* window both variants could look selected (and the run got no variant) after adding a variant with *Add variant* in the same session – the id assigned on save was not passed back to the open card. Variants are now picked by position and the id is fetched before the run.
+
 ## 1.11.8 – 2026-10-25
 
 - **"Build light" is now called "Own script"** in the card settings. A card that only runs its own script says *Script* everywhere instead of *Build* (tile, card, button *Run script*, *Script only*, *Last script run*, confirmation, progress window, log). Cards with RAD Studio builds keep *Build*. Nothing changes in `config.json` – existing cards work as before.
