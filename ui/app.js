@@ -22,6 +22,9 @@ const S = {
   canPickDir: false, dataDir: "", version: "", localOK: {},
   job: null, jobTab: null, logSeen: 0, pollTimer: null, saveTimers: {}, pendingSave: 0,
   editing: new Set(), // cards unlocked for editing (everything else is read-only)
+  // card editing is a draft since 1.11.15: changes stay in the card object until "Uložit"; "Zavřít bez uložení" restores this copy
+  snap: {},           // card id → copy of the card when editing started
+  dirty: new Set(),   // cards with unsaved changes
   open: [],            // cards shown as tabs in the top bar (opened from the overview, closable; per PC)
   view: "overview",    // overview (tiles of all cards) | card (one card in detail)
   jobData: {},         // latest job snapshot per card (overview)
@@ -155,7 +158,7 @@ async function load() {
     S.autostart = !!st.autostart; S.autostartSupported = !!st.autostartSupported;
     S.idfProfile = st.idfProfile || ""; S.fwRunning = st.fwRunning || {};
     Object.keys(S.fwRunning).forEach((id) => fwBgKick(id));
-    S.tabs = st.tabs || []; S.jobs = st.jobs || {};
+    S.tabs = st.tabs || []; S.jobs = st.jobs || {}; S.pc = st.pc || "";
     applyTheme();
     // window state of this PC (collapsed groups, open tabs, last card) – kept by the app per computer, see uiGet
     S.ui = st.ui && typeof st.ui === "object" ? st.ui : {};
@@ -211,7 +214,8 @@ function openTab(id) { if (id && !S.open.includes(id)) { S.open.push(id); saveOp
 // closes the tab of a card (the card stays – it is opened again from the overview)
 function closeTab(id) {
   const t = S.tabs.find((x) => x.id === id);
-  if (t && editing(id)) { flushSave(t); S.editing.delete(id); }
+  if (t && S.dirty.has(id)) return askUnsaved(t, () => closeTab(id));
+  if (t && editing(id)) leaveEdit(t);
   const vis = orderedTabs().filter((x) => S.open.includes(x.id)).map((x) => x.id);
   const at = vis.indexOf(id);
   S.open = S.open.filter((x) => x !== id);
@@ -227,7 +231,7 @@ function closeTab(id) {
 function select(id) {
   openTab(id);
   const prev = cur();
-  if (prev && prev.id !== id && editing(prev.id)) { flushSave(prev); S.editing.delete(prev.id); }
+  if (prev && prev.id !== id && editing(prev.id) && !S.dirty.has(prev.id)) leaveEdit(prev); // unsaved draft stays (● on the tab)
   S.current = id;
   S.view = "card";
   uiSet("current", id); uiSet("view", "card");
@@ -239,7 +243,7 @@ function select(id) {
 
 function showOverview() {
   const prev = cur();
-  if (prev && editing(prev.id)) { flushSave(prev); S.editing.delete(prev.id); }
+  if (prev && editing(prev.id) && !S.dirty.has(prev.id)) leaveEdit(prev);
   S.view = "overview";
   uiSet("view", "overview");
   clearTimeout(S.pollTimer);
@@ -260,6 +264,7 @@ async function checkAllLocal() {
 // autosave: typing waits 800 ms of quiet (fewer writes into Dropbox); a failed save is retried once quietly
 // before an error is shown – Dropbox briefly locks the freshly changed config.json while it uploads it
 function scheduleSave(tab, delay = 800) {
+  if (editing(tab.id)) return markDirty(tab); // edit mode: saved only by "Uložit"
   clearTimeout(S.saveTimers[tab.id]);
   setSaveState("Ukládám…");
   S.saveTimers[tab.id] = setTimeout(() => saveTab(tab), delay);
@@ -270,15 +275,7 @@ async function saveTab(tab) {
   delete S.saveTimers[tab.id];
   S.pendingSave++;
   try {
-    const body = JSON.parse(JSON.stringify(tab));
-    const fresh = await api("PUT", `/api/tabs/${tab.id}`, body);
-    delete tab.conn.passNew;
-    tab.conn.hasPass = fresh.conn.hasPass;
-    tab.conn.hostKey = fresh.conn.hostKey;
-    fresh.pairs.forEach((p, i) => { if (tab.pairs[i] && !tab.pairs[i].id) tab.pairs[i].id = p.id; });
-    (fresh.backups || []).forEach((b, i) => { if (tab.backups?.[i] && !tab.backups[i].id) tab.backups[i].id = b.id; });
-    (fresh.git || []).forEach((g, i) => { if (tab.git?.[i] && !tab.git[i].id) tab.git[i].id = g.id; });
-    (fresh.fw?.variants || []).forEach((v, i) => { const mine = tab.fw?.variants?.[i]; if (mine && !mine.id) mine.id = v.id; });
+    await putTab(tab);
     setSaveState("Uloženo");
     delete (S.saveRetry ||= {})[tab.id];
   } catch (e) {
@@ -293,6 +290,73 @@ async function saveTab(tab) {
       toast("Uložení se nepovedlo: " + e.message, true);
     }
   } finally { S.pendingSave--; }
+}
+
+// PUT the card; ids assigned by the server are copied back into the open card (throws on error)
+async function putTab(tab) {
+  const body = JSON.parse(JSON.stringify(tab));
+  const fresh = await api("PUT", `/api/tabs/${tab.id}`, body);
+  delete tab.conn.passNew;
+  tab.conn.hasPass = fresh.conn.hasPass;
+  tab.conn.hostKey = fresh.conn.hostKey;
+  fresh.pairs.forEach((p, i) => { if (tab.pairs[i] && !tab.pairs[i].id) tab.pairs[i].id = p.id; });
+  (fresh.backups || []).forEach((b, i) => { if (tab.backups?.[i] && !tab.backups[i].id) tab.backups[i].id = b.id; });
+  (fresh.git || []).forEach((g, i) => { if (tab.git?.[i] && !tab.git[i].id) tab.git[i].id = g.id; });
+  (fresh.fw?.variants || []).forEach((v, i) => { const mine = tab.fw?.variants?.[i]; if (mine && !mine.id) mine.id = v.id; });
+  return fresh;
+}
+
+   when closing the tab) puts the card back as it was. Switching to another card keeps the draft (● on the tab). */
+function beginEdit(t) {
+  S.editing.add(t.id);
+  S.snap[t.id] = JSON.parse(JSON.stringify(t));
+  S.dirty.delete(t.id);
+}
+function leaveEdit(t) {
+  S.editing.delete(t.id);
+  delete S.snap[t.id];
+  S.dirty.delete(t.id);
+}
+function markDirty(t) {
+  const first = !S.dirty.has(t.id);
+  S.dirty.add(t.id);
+  if (first) { renderTabs(); drawEditNote(t); }
+}
+function drawEditNote(t) {
+  const el = $("#edit-note");
+  if (el && S.current === t.id) {
+    el.textContent = S.dirty.has(t.id) ? "Neuložené změny – uložíš tlačítkem Uložit" : "Úpravy karty · změny se uloží tlačítkem Uložit";
+    el.classList.toggle("dirty", S.dirty.has(t.id));
+  }
+}
+function revertEdit(t) {
+  const snap = S.snap[t.id];
+  if (snap) { for (const k of Object.keys(t)) delete t[k]; Object.assign(t, JSON.parse(JSON.stringify(snap))); }
+  leaveEdit(t);
+}
+// card with unsaved changes is being closed: save / discard / stay
+function askUnsaved(t, then) {
+  modal(`
+    <div class="modal-h"><h3>Neuložené změny karty „${esc(t.name || "bez názvu")}“</h3><p>Úpravy této karty ještě nejsou uložené.</p></div>
+    <div class="modal-f"><button class="ghost" data-close>Zpět k úpravám</button><button class="danger" id="m-drop">Zahodit změny</button><button class="primary" id="m-save">Uložit</button></div>`,
+    (box, close) => {
+      $("#m-drop", box).onclick = () => { close(); revertEdit(t); render(); then?.(); };
+      $("#m-save", box).onclick = async () => { close(); if (await commitEdit(t)) then?.(); };
+    });
+}
+// "Uložit": writes the draft; on success the card is locked again
+async function commitEdit(t) {
+  clearTimeout(S.saveTimers[t.id]); delete S.saveTimers[t.id];
+  if (S.dirty.has(t.id)) {
+    S.pendingSave++;
+    try { await putTab(t); }
+    catch (e) { toast("Uložení se nepovedlo: " + e.message, true); return false; }
+    finally { S.pendingSave--; }
+    setSaveState("Uloženo");
+  }
+  leaveEdit(t);
+  renderTabs(); renderMain(); checkLocal();
+  return true;
 }
 
 async function flushSave(tab) {
@@ -364,7 +428,7 @@ function renderTabs() {
     </div>` + orderedTabs().filter((t) => S.open.includes(t.id)).map((t, i, arr) => `${i > 0 && groupOf(arr[i - 1]) !== groupOf(t) ? `<span class="tab-sep" aria-hidden="true"></span>` : ""}
     <div class="tab${running(t.id) ? " running" : ""}${editing(t.id) ? " editing" : ""}" role="tab" tabindex="0" draggable="true"
          aria-selected="${S.view === "card" && t.id === S.current}" data-id="${t.id}" style="--c:${esc(t.color)}" title="${esc(t.name)}">
-      <span class="dot"></span><span class="name" translate="no">${esc(t.name)}</span>${editing(t.id) ? `<svg class="ed" aria-label="upravuje se"><use href="#i-gear"/></svg>` : ""}
+      <span class="dot"></span><span class="name" translate="no">${esc(t.name)}</span>${editing(t.id) ? `<svg class="ed" aria-label="upravuje se"><use href="#i-gear"/></svg>` : ""}${S.dirty.has(t.id) ? `<span class="unsaved" title="Neuložené změny">●</span>` : ""}
       <button class="tab-x" data-close-tab title="Zavřít záložku (Ctrl+W) – karta zůstane v Přehledu" aria-label="Zavřít">${icon("x")}</button>
     </div>`).join("");
   const ov = $("#tab-ov");
@@ -425,7 +489,7 @@ function startRename(el, id) {
   nameEl.replaceWith(inp);
   inp.focus(); inp.select();
   const done = (ok) => {
-    if (ok && inp.value.trim()) { t.name = inp.value.trim(); saveTab(t); }
+    if (ok && inp.value.trim()) { t.name = inp.value.trim(); scheduleSave(t, 0); }
     renderTabs(); if (id === S.current) $("#title").value = t.name;
   };
   inp.onkeydown = (e) => { if (e.key === "Enter") done(true); if (e.key === "Escape") done(false); e.stopPropagation(); };
@@ -452,7 +516,7 @@ function tabMenu(id, x, y) {
     const b = e.target.closest("button");
     if (!b) return;
     m.hidden = true;
-    if (b.dataset.c) { t.color = b.dataset.c; renderTabs(); saveTab(t); return; }
+    if (b.dataset.c) { t.color = b.dataset.c; renderTabs(); scheduleSave(t, 0); if (editing(t.id) && S.current === t.id) renderMain(); return; }
     if (b.dataset.a === "edit") { if (id !== S.current) select(id); startEdit(t); return; }
     if (b.dataset.a === "rename") { if (id !== S.current) select(id); startRename($(`.tab[data-id="${id}"]`), id); }
     if (b.dataset.a === "dup") duplicateTab(t);
@@ -464,11 +528,12 @@ document.addEventListener("click", (e) => { if (!e.target.closest("#ctx")) $("#c
 // copy of the card with all settings (server, password, folders, builds, backups, GitHub) right after it, opened for editing
 async function duplicateTab(t) {
   try {
+    if (S.dirty.has(t.id) && !(await commitEdit(t))) return; // the copy is made from the saved card
     await flushSave(t);
     const n = await api("POST", `/api/tabs/${t.id}/duplicate`);
     const at = S.tabs.findIndex((x) => x.id === t.id);
     S.tabs.splice(at < 0 ? S.tabs.length : at + 1, 0, n);
-    S.editing.add(n.id);
+    beginEdit(n);
     select(n.id);
     setTimeout(() => { $("#title")?.focus(); $("#title")?.select(); }, 30);
     toast("Karta zkopírovaná – uprav, co se liší");
@@ -485,6 +550,7 @@ function deleteTab(t) {
         try {
           await api("DELETE", `/api/tabs/${t.id}`);
           S.tabs = S.tabs.filter((x) => x.id !== t.id);
+          leaveEdit(t);
           S.open = S.open.filter((x) => x !== t.id); saveOpen();
           close();
           S.current = S.tabs[0]?.id ?? null;
@@ -519,9 +585,10 @@ function renderMain() {
       <div class="hero-actions">
         <div class="row"><button class="plain small del-card" id="btn-del" title="Smazat kartu (jen nastavení v Leonzille)">${icon("x")}Smazat</button>
         <button class="plain small" id="btn-dup" title="Nová karta se stejným nastavením">${icon("copy")}Duplikovat</button>
-        <button class="primary done" id="btn-done">${icon("lock")}Hotovo – zamknout</button></div>
+        <button class="plain small" id="btn-cancel" title="Zahodí změny od otevření úprav">${icon("x")}Zavřít bez uložení</button>
+        <button class="primary done" id="btn-done">${icon("lock")}Uložit</button></div>
       </div>
-      <div class="hero-sub edit-note">Úpravy karty · každá změna se ukládá hned</div>
+      <div class="hero-sub edit-note${S.dirty.has(t.id) ? " dirty" : ""}" id="edit-note">${S.dirty.has(t.id) ? "Neuložené změny – uložíš tlačítkem Uložit" : "Úpravy karty · změny se uloží tlačítkem Uložit"}</div>
       <div class="hero-group">
         <label for="f-group">Skupina</label>
         <select id="f-group"><option value="">Bez skupiny</option>${groups().map((g) => `<option value="${g.id}" ${g.id === groupOf(t) ? "selected" : ""}>${esc(g.name)}</option>`).join("")}</select>
@@ -789,7 +856,7 @@ function bindMain(t) {
     if (!b || b.dataset.c === t.color) return;
     t.color = b.dataset.c;
     $("#f-colors").querySelectorAll("button").forEach((x) => { const on = x === b; x.setAttribute("aria-pressed", on); x.setAttribute("aria-checked", on); });
-    renderTabs(); saveTab(t);
+    renderTabs(); scheduleSave(t, 0);
   };
   $("#title").onkeydown = (e) => { if (e.key === "Enter") e.target.blur(); };
   $("#btn-add-pair").onclick = () => { t.pairs.push({ id: "", local: "", remote: "", enabled: true, excludes: [] }); renderPairs(); scheduleSave(t, 0); };
@@ -839,7 +906,14 @@ function bindMain(t) {
     } catch (e) { toast(e.message, true); }
   };
   $("#btn-test").onclick = () => testConn(t);
-  $("#btn-done").onclick = () => finishEdit(t);
+  $("#btn-done").onclick = () => commitEdit(t);
+  $("#btn-cancel").onclick = () => {
+    if (!S.dirty.has(t.id)) { leaveEdit(t); return render(); }
+    modal(`
+      <div class="modal-h"><h3>Zavřít bez uložení?</h3><p>Změny karty „${esc(S.snap[t.id]?.name || t.name)}“ od otevření úprav se zahodí.</p></div>
+      <div class="modal-f"><button class="ghost" data-close>Zpět k úpravám</button><button class="danger" id="m-drop">Zahodit změny</button></div>`,
+      (box, close) => { $("#m-drop", box).onclick = () => { close(); revertEdit(t); render(); checkLocal(); }; });
+  };
   $("#btn-dup").onclick = () => duplicateTab(t);
   $("#btn-del").onclick = () => deleteTab(t);
   $("#f-group").onchange = (e) => { t.group = e.target.value; renderTabs(); scheduleSave(t, 0); };
@@ -2159,19 +2233,13 @@ async function pollBuildWindow() {
 
 function startEdit(t) {
   if (running(t.id)) return toast("Během synchronizace nejde kartu upravovat", true);
-  S.editing.add(t.id);
+  beginEdit(t);
   renderTabs();
   renderMain();
   checkLocal();
 }
 
-async function finishEdit(t) {
-  await flushSave(t);
-  S.editing.delete(t.id);
-  renderTabs();
-  renderMain();
-  checkLocal();
-}
+async function finishEdit(t) { return commitEdit(t); }
 
 function renderView(t) {
   const c = t.conn;
@@ -2329,7 +2397,7 @@ async function addTab(group = "") {
   try {
     const t = await api("POST", "/api/tabs", { name: "", group });
     S.tabs.push(t);
-    S.editing.add(t.id);
+    beginEdit(t);
     select(t.id);
     setTimeout(() => { $("#title")?.focus(); $("#title")?.select(); }, 30);
   } catch (e) { toast(e.message, true); }
@@ -2711,6 +2779,27 @@ function openSettings(focus = false) {
   modal(`
     <div class="modal-h"><h3>Nastavení aplikace</h3><p>Leonzilla ${esc(S.version)} · <button class="link" id="s-about" style="padding:0">O aplikaci</button> · data: <span style="font-family:var(--mono);font-size:12px" translate="no">${esc(S.dataDir)}</span></p></div>
     <div class="modal-b set-grid">
+      <div class="f"><span class="lab">Vzhled</span>
+        <div class="seg" id="s-theme">${[["auto", "Podle Windows"], ["light", "Světlý"], ["dark", "Tmavý"]].map(([k, v]) => `<button data-v="${k}" aria-pressed="${s.theme === k}">${v}</button>`).join("")}</div></div>
+      <div class="f"><span class="lab">Jazyk · Language</span>
+        <div class="seg" id="s-lang">${[["", "Podle Windows"], ["cs", "Čeština"], ["en", "English"]].map(([k, v]) => `<button data-v="${k}" aria-pressed="${(s.langSetting || "") === k}"${k ? ' translate="no"' : ""}>${v}</button>`).join("")}</div></div>
+      ${S.autostartSupported ? `<div class="f"><span class="lab">Spouštění</span>
+        <label class="check"><input type="checkbox" id="s-autostart" ${S.autostart ? "checked" : ""}>Spouštět Leonzillu při startu Windows (minimalizovaně)</label>
+        <span class="note">Platí jen pro tento PC a uživatele Windows (zápis do registru), ne pro ostatní PC s Dropboxem. Výchozí: vypnuto.</span></div>` : ""}
+      <div class="f"><label for="s-workers">Souběžné nahrávání (počet spojení)</label>
+        <select id="s-workers" style="width:120px">${[1, 2, 3, 4, 5, 6, 8].map((n) => `<option ${n === s.workers ? "selected" : ""}>${n}</option>`).join("")}</select>
+        <span class="note">Víc spojení = rychlejší nahrávání hodně malých souborů. Někteří provideři povolují jen 2–4.</span></div>
+      <div class="f"><span class="lab">Hlavní heslo</span>
+        <span class="note">${s.master ? "Je nastavené – hesla k serverům jsou zašifrovaná a při spuštění se zeptám na hlavní heslo." :
+          "Není nastavené – hesla jsou v konfiguraci jen zamaskovaná (kdo má soubor, heslo z něj dostane). Hlavní heslo je zašifruje; ptám se na něj při každém spuštění."}</span>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
+          ${s.master ? `<input type="password" id="s-old" placeholder="Současné hlavní heslo" style="flex:1;min-width:160px">` : ""}
+          <input type="password" id="s-new" placeholder="${s.master ? "Nové (prázdné = zrušit)" : "Nové hlavní heslo"}" style="flex:1;min-width:160px">
+          <input type="password" id="s-new2" placeholder="Znovu nové" style="flex:1;min-width:160px">
+          <button class="ghost" id="s-master">${s.master ? "Změnit" : "Nastavit"}</button>
+        </div></div>
+      <div class="f" id="s-pcs"><span class="lab">Více počítačů (Dropbox)</span>
+        <span class="note"><b>Společné pro všechna PC</b> (<code>Leonzilla_data\\config.json</code>): karty a jejich pořadí, skupiny, servery a hesla, buildy a kompilátor, Dropbox u karet, jazyk, vzhled, souběžné nahrávání, hlavní heslo; také stav nahrání a logy.<br><b>Jen tento PC</b>: sbalené skupiny, otevřené záložky a poslední karta (<code>Leonzilla_data\\ui\\${esc(S.pc || "PC")}.json</code>), velikost a poloha okna (<code>%LOCALAPPDATA%\\Leonzilla</code>) a spouštění s Windows.</span></div>
       <div class="f" id="s-groups-box"><span class="lab">Skupiny karet</span>
         <span class="note">V Přehledu jsou skupiny pod sebou v tomto pořadí. Dlaždice mezi nimi přetáhneš myší, nebo skupinu vybereš při úpravě karty.</span>
         <ul class="glist" id="s-groups"></ul>
@@ -2725,32 +2814,12 @@ function openSettings(focus = false) {
           <button id="s-compiler-pick" title="Vybrat soubor">${icon("file")}</button></div>
         <label class="check" style="margin-top:8px"><input type="checkbox" id="s-ignoreout" ${s.ignoreOutput !== false ? "checked" : ""}>Výstup buildu (složku TMSWeb v projektu) vyřadit z Dropboxu</label>
         <span class="note">Dropbox jinak zamyká čerstvě zkompilované soubory a kompilace skončí chybou „soubor využívá jiný proces“. Vyřazená složka zůstane na tomto PC, z Dropboxu a ostatních PC zmizí.</span>
-        <label class="check"><input type="checkbox" id="s-stopdb" ${s.stopDropbox ? "checked" : ""}>Navíc během buildu RAD Studia Dropbox vypnout a pak znovu spustit (u všech karet)</label>
-        <span class="note">Hlídání Dropboxu u jednotlivé karty (vlastní skript, FW ESP32, RAD Studio): Upravit kartu → <i>Dropbox</i> – nehlídat / zkontrolovat pauzu / vždy vypnout.</span>
+        <span class="note">Vypnutí nebo hlídání Dropboxu během buildu se nastavuje u každé karty zvlášť: Upravit kartu → <i>Dropbox</i>.</span>
         <label for="s-vivar" style="margin-top:8px">Proměnná prostředí pro Info k verzi</label>
         <input id="s-vivar" value="${esc(s.versionInfoVar || "")}" placeholder="LEONZILLA_VERSION_INFO" spellcheck="false" maxlength="60" style="max-width:320px">
         <span class="note">Info k verzi dostane post-build vždy v proměnné LEONZILLA_VERSION_INFO. Když ho skript projektu čte pod jiným názvem, napiš ho sem – nastaví se obě.</span>
         <span class="note" id="s-compiler-note">${s.compilerFound ? `Použije se: ${esc(s.compilerFound)}${s.compiler ? "" : " (nalezen automaticky)"}` : "Kompilátor nebyl nalezen – bez něj build nepůjde. Na PC bez TMS WEB Core jde jen synchronizace."}</span>
       </div>
-      ${S.autostartSupported ? `<div class="f"><span class="lab">Spouštění</span>
-        <label class="check"><input type="checkbox" id="s-autostart" ${S.autostart ? "checked" : ""}>Spouštět Leonzillu při startu Windows (minimalizovaně)</label>
-        <span class="note">Platí jen pro tento PC a uživatele Windows (zápis do registru), ne pro ostatní PC s Dropboxem. Výchozí: vypnuto.</span></div>` : ""}
-      <div class="f"><span class="lab">Jazyk · Language</span>
-        <div class="seg" id="s-lang">${[["", "Podle Windows"], ["cs", "Čeština"], ["en", "English"]].map(([k, v]) => `<button data-v="${k}" aria-pressed="${(s.langSetting || "") === k}"${k ? ' translate="no"' : ""}>${v}</button>`).join("")}</div></div>
-      <div class="f"><span class="lab">Vzhled</span>
-        <div class="seg" id="s-theme">${[["auto", "Podle Windows"], ["light", "Světlý"], ["dark", "Tmavý"]].map(([k, v]) => `<button data-v="${k}" aria-pressed="${s.theme === k}">${v}</button>`).join("")}</div></div>
-      <div class="f"><label for="s-workers">Souběžné nahrávání (počet spojení)</label>
-        <select id="s-workers" style="width:120px">${[1, 2, 3, 4, 5, 6, 8].map((n) => `<option ${n === s.workers ? "selected" : ""}>${n}</option>`).join("")}</select>
-        <span class="note">Víc spojení = rychlejší nahrávání hodně malých souborů. Někteří provideři povolují jen 2–4.</span></div>
-      <div class="f"><span class="lab">Hlavní heslo</span>
-        <span class="note">${s.master ? "Je nastavené – hesla k serverům jsou zašifrovaná a při spuštění se zeptám na hlavní heslo." :
-          "Není nastavené – hesla jsou v konfiguraci jen zamaskovaná (kdo má soubor, heslo z něj dostane). Hlavní heslo je zašifruje; ptám se na něj při každém spuštění."}</span>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:4px">
-          ${s.master ? `<input type="password" id="s-old" placeholder="Současné hlavní heslo" style="flex:1;min-width:160px">` : ""}
-          <input type="password" id="s-new" placeholder="${s.master ? "Nové (prázdné = zrušit)" : "Nové hlavní heslo"}" style="flex:1;min-width:160px">
-          <input type="password" id="s-new2" placeholder="Znovu nové" style="flex:1;min-width:160px">
-          <button class="ghost" id="s-master">${s.master ? "Změnit" : "Nastavit"}</button>
-        </div></div>
     </div>
     <div class="modal-f"><button class="primary" data-close>Hotovo</button></div>`, (box) => {
     $("#s-about", box).onclick = () => openAbout();
@@ -2845,10 +2914,6 @@ function openSettings(focus = false) {
         toast(on ? "Leonzilla se bude spouštět s Windows (minimalizovaně)" : "Spouštění s Windows vypnuto");
       } catch (er) { e.target.checked = !on; toast(er.message, true); }
     });
-    $("#s-stopdb", box).onchange = (e) => {
-      s.stopDropbox = e.target.checked;
-      api("POST", "/api/settings", { theme: s.theme, workers: s.workers, stopDropbox: s.stopDropbox }).catch((er) => toast(er.message, true));
-    };
     $("#s-compiler-pick", box).onclick = async () => {
       try {
         const r = await api("POST", "/api/pickfile", { title: tr("Vyber TMSWebCompiler.exe"), start: s.compilerFound || "", filterName: "TMSWebCompiler.exe", filterSpec: "TMSWebCompiler.exe;*.exe" });

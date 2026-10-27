@@ -138,6 +138,8 @@ button:disabled { opacity: .5; cursor: not-allowed; }
 button svg { width: 16px; height: 16px; }
 
 .tab .ed { width: 14px; height: 14px; color: var(--amber-deep); }
+.tab .unsaved { color: var(--amber-deep); font-size: 11px; line-height: 1; }
+.edit-note.dirty { color: var(--danger); }
 
 /* overview tiles */
 .tab.ov { padding-right: 14px; }

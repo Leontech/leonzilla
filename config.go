@@ -43,6 +43,7 @@ type Settings struct {
 	// IgnoreOutput: exclude the build output folder (TMSWeb) from Dropbox sync. nil = default (on).
 	IgnoreOutput *bool `json:"ignoreOutput,omitempty"`
 	// StopDropbox: stop Dropbox during RAD Studio builds of every card (only if it runs) and start it again afterwards. Default off.
+	// No longer in the UI since 1.11.16 (per card: Tab.Dropbox); still honoured if an older config has it on, so nothing changes for existing cards.
 	// Per card (own script, FW, RAD): Tab.Dropbox.
 	StopDropbox bool `json:"stopDropbox,omitempty"`
 	// Master password (optional). When set, server passwords are encrypted with it.

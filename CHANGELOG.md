@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.16 – 2026-10-27
+
+- **Card changes are saved only with Save.** Editing a card is now a draft: *Save* writes it and locks the card, *Close without saving* puts the card back as it was (with a confirmation if something changed). Unsaved changes stay when you switch to another card (● on the tab); closing the tab asks whether to save. Before, every change was saved immediately.
+- **App settings** start with the everyday options – theme, language, start with Windows, parallel uploads, master password – followed by groups and builds. A new section explains what is shared by all PCs through Dropbox (cards and their order, groups, servers, builds, language, theme …) and what is kept per PC (collapsed groups, open tabs, last card, window size and position, start with Windows).
+- The global "stop Dropbox during RAD Studio builds" option is gone from App settings – Dropbox is set per card (*Edit card → Dropbox*). Existing cards are not changed.
+
 ## 1.11.14 – 2026-10-26
 
 - The Dropbox check is now **per card** instead of one global setting: *Edit card → Dropbox* – *don't watch* (default), *check pause, otherwise ask*, or *always stop it for the build*. It applies to the card's own script, FW build (ESP32) and RAD Studio builds; synchronization, backups and GitHub are never affected.
