@@ -89,6 +89,8 @@ type Job struct {
 	notes     map[*BackupPair]string // backup: note per zip
 	names     map[*BackupPair]string // backup: own zip name (without .zip)
 	buildInfo map[string]string      // build ID → "Info k verzi" changed in the confirmation (this run only)
+	script    string                 // own script chosen in the confirmation (BuildLight.key()); "" = the only one
+	scriptArg *string                // its parameters chosen in the confirmation; nil = the first variant
 }
 
 func (j *Job) logf(kind, format string, a ...any) {
@@ -246,6 +248,8 @@ type StartOpts struct {
 	Only           []int             // backup: run only these backups (indexes into Tab.Backups); nil = all enabled
 	Names          []string          // backup: own zip name per backup (same order as Tab.Backups), e.g. "fw-160" → fw-160.zip
 	BuildInfo      map[string]string // build ID → "Info k verzi" for this run (overrides the build setting)
+	Script         string            // own script chosen for this run (BuildLight.key()); "" = the card has only one
+	ScriptArgs     *string           // parameters chosen for it (one of its variants); nil = the first variant
 	Sync           bool              // synchronize (always true unless "only build")
 	StopDropbox    bool              // stop Dropbox during the builds for this run (chosen in the Dropbox check)
 }
@@ -298,6 +302,7 @@ func (r *Runner) Start(tabID string, o StartOpts) (*Job, error) {
 	}
 	if o.Build {
 		j.buildInfo = o.BuildInfo
+		j.script, j.scriptArg = o.Script, o.ScriptArgs
 		plans, err := r.prepareBuilds(j, tab)
 		if err != nil {
 			cancel()

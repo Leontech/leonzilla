@@ -20,6 +20,9 @@ type BuildLight struct {
 	Script string `json:"script"`          // path to the script: .py via Python, .ps1 via PowerShell, others (.bat, .cmd, .exe) via cmd
 	Args   string `json:"args,omitempty"`  // parameters for the script
 	Label  string `json:"label,omitempty"` // own text of the main card button, e.g. "Build and upload to my web" (empty = default)
+	// more variants of the parameters (Args = the first one, may be empty); with more variants the confirmation asks which one
+	MoreArgs []string `json:"moreArgs,omitempty"`
+	LastArgs *string  `json:"lastArgs,omitempty"` // variant chosen last time (only with more variants; may be "")
 }
 
 func (b *BuildLight) normalize() {
@@ -29,9 +32,84 @@ func (b *BuildLight) normalize() {
 	if r := []rune(b.Label); len(r) > 60 {
 		b.Label = string(r[:60])
 	}
+	// variants of the parameters without duplicates (the first one stays in Args)
+	seen := map[string]bool{b.Args: true}
+	var more []string
+	for _, a := range b.MoreArgs {
+		a = strings.TrimSpace(a)
+		if !seen[a] {
+			seen[a] = true
+			more = append(more, a)
+		}
+	}
+	b.MoreArgs = more
+	if b.LastArgs != nil {
+		v := strings.TrimSpace(*b.LastArgs)
+		b.LastArgs = &v
+		if len(b.MoreArgs) == 0 || !seen[v] {
+			b.LastArgs = nil
+		}
+	}
 }
 
+// argVariants returns all variants of the parameters (the first = Args).
+func (b *BuildLight) argVariants() []string { return append([]string{b.Args}, b.MoreArgs...) }
+
 func (b *BuildLight) name() string { return filepath.Base(b.Script) }
+
+// key identifies a script in the choice of scripts (path + first parameters).
+func (b *BuildLight) key() string { return b.Script + "|" + b.Args }
+
+// normalizeScripts drops scripts without a path; when the first one (BuildLight) is gone, the next one takes its place.
+func (t *Tab) normalizeScripts() {
+	var more []*BuildLight
+	for _, m := range t.MoreScripts {
+		if m == nil {
+			continue
+		}
+		m.normalize()
+		if m.Script != "" {
+			more = append(more, m)
+		}
+	}
+	t.MoreScripts = more
+	if t.BuildLight != nil {
+		t.BuildLight.normalize()
+		if t.BuildLight.Script == "" {
+			t.BuildLight = nil
+		}
+	}
+	if t.ScriptPick != "" {
+		ok := false
+		for _, s := range t.scripts() {
+			ok = ok || s.key() == t.ScriptPick
+		}
+		if !ok {
+			t.ScriptPick = ""
+		}
+	}
+	if t.BuildLight == nil && len(t.MoreScripts) > 0 {
+		t.BuildLight, t.MoreScripts = t.MoreScripts[0], t.MoreScripts[1:]
+	}
+	if len(t.MoreScripts) == 0 {
+		t.MoreScripts = nil
+		t.ScriptPick = "" // one script = no choice of scripts
+	}
+}
+
+// scripts returns all own scripts of the card in their order.
+func (t *Tab) scripts() []*BuildLight {
+	var out []*BuildLight
+	if t.BuildLight != nil && t.BuildLight.Script != "" {
+		out = append(out, t.BuildLight)
+	}
+	for _, m := range t.MoreScripts {
+		if m != nil && m.Script != "" {
+			out = append(out, m)
+		}
+	}
+	return out
+}
 
 // findPython returns the Python interpreter (+ its leading arguments):
 // python from PATH (not the Microsoft Store stub), then the py launcher.

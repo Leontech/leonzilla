@@ -104,6 +104,10 @@ func (a *API) Handler() http.Handler {
 	api.HandleFunc("GET /api/ui", a.hUIGet)
 	api.HandleFunc("POST /api/ui", a.hUISet)
 	api.HandleFunc("POST /api/master", a.hMaster)
+	api.HandleFunc("POST /api/export", a.hExport)
+	api.HandleFunc("GET /api/export", a.hExportList)
+	api.HandleFunc("POST /api/import/preview", a.hImportPreview)
+	api.HandleFunc("POST /api/import", a.hImport)
 	api.HandleFunc("POST /api/pickdir", a.hPickDir)
 	api.HandleFunc("POST /api/pickexclude", a.hPickExclude)
 	api.HandleFunc("POST /api/pickfile", a.hPickFile)
@@ -316,6 +320,8 @@ type tabUpdate struct {
 	BuildInfo      map[string]string `json:"buildInfo"`
 	Fw             *FwConfig         `json:"fw"`
 	BuildLight     *BuildLight       `json:"buildLight"`
+	MoreScripts    *[]*BuildLight    `json:"moreScripts"`
+	ScriptPick     *string           `json:"scriptPick"`
 	Git            []*GitRepo        `json:"git"`
 	GitPull        *bool             `json:"gitPull"`
 	Dropbox        *string           `json:"dropbox"`
@@ -403,6 +409,17 @@ func (a *API) hUpdateTab(w http.ResponseWriter, r *http.Request) {
 		} else {
 			t.BuildLight = u.BuildLight
 		}
+	}
+	if u.MoreScripts != nil {
+		t.MoreScripts = *u.MoreScripts
+	}
+	if u.ScriptPick != nil {
+		t.ScriptPick = *u.ScriptPick
+	}
+	if len(t.MoreScripts) > 0 {
+		t.normalizeScripts()
+	} else { // a single script: stored exactly as in the earlier versions
+		t.MoreScripts, t.ScriptPick = nil, ""
 	}
 	if u.BuildInfo != nil {
 		t.BuildInfo = map[string]string{}
@@ -734,11 +751,13 @@ func (a *API) hSync(w http.ResponseWriter, r *http.Request) {
 		Only                          []int
 		Names                         []string
 		BuildInfo                     map[string]string
+		Script                        string  // own script chosen in the confirmation (BuildLight.key())
+		ScriptArgs                    *string // its parameters chosen in the confirmation
 	}
 	_ = readJSON(r, &req)
 	id := r.PathValue("id")
 	a.dropBrowse(id)
-	o := StartOpts{Preview: req.Preview, Force: req.Force, Build: req.Build, Backup: req.Backup, Notes: req.Notes, Only: req.Only, Names: req.Names, BuildInfo: req.BuildInfo, Sync: req.Sync == nil || *req.Sync, StopDropbox: req.StopDropbox}
+	o := StartOpts{Preview: req.Preview, Force: req.Force, Build: req.Build, Backup: req.Backup, Notes: req.Notes, Only: req.Only, Names: req.Names, BuildInfo: req.BuildInfo, Script: req.Script, ScriptArgs: req.ScriptArgs, Sync: req.Sync == nil || *req.Sync, StopDropbox: req.StopDropbox}
 	if _, err := a.runner.Start(id, o); err != nil {
 		writeErr(w, 409, err)
 		return

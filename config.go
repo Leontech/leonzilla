@@ -70,6 +70,11 @@ type Tab struct {
 	BuildInfo map[string]string `json:"buildInfo,omitempty"`
 	// "Build light": own Python script run like a build before the upload – nil = not used
 	BuildLight *BuildLight `json:"buildLight,omitempty"`
+	// more own scripts: the first stays in BuildLight (existing cards unchanged), the next ones here;
+	// with more than one script the card asks in the confirmation which ones to run
+	MoreScripts []*BuildLight `json:"moreScripts,omitempty"`
+	// script chosen in that choice last time (BuildLight.key()); "" = the first one
+	ScriptPick string `json:"scriptPick,omitempty"`
 	// FW build (ESP-IDF) – nil = not used
 	Fw        *FwConfig    `json:"fw,omitempty"`
 	LastBuild *SyncSummary `json:"lastBuild,omitempty"`
@@ -259,12 +264,7 @@ func (s *Store) normalizeTab(t *Tab) {
 	if t.Fw != nil {
 		t.Fw.normalize()
 	}
-	if t.BuildLight != nil {
-		t.BuildLight.normalize()
-		if t.BuildLight.Script == "" {
-			t.BuildLight = nil
-		}
-	}
+	t.normalizeScripts()
 	for _, g := range t.Git {
 		if g.ID == "" {
 			g.ID = newID()
@@ -294,6 +294,14 @@ func (s *Store) saveLocked() error {
 		return errors.New(T("aplikace je zamčená"))
 	}
 	for _, t := range s.cfg.Tabs {
+		// an unchanged password keeps its stored form (no needless change of config.json); it is encoded again when
+		// it changed, or when the protection changed (master password set / changed / removed)
+		if old := t.Conn.PassStored; old != "" && strings.HasPrefix(old, "enc:") == (s.key != nil) &&
+			(strings.HasPrefix(old, "enc:") || strings.HasPrefix(old, "obf:")) {
+			if p, err := s.decodePass(old); err == nil && p == t.Conn.pass {
+				continue
+			}
+		}
 		t.Conn.PassStored = s.encodePass(t.Conn.pass)
 	}
 	b, err := json.MarshalIndent(s.cfg, "", "  ")
@@ -362,7 +370,14 @@ func (s *Store) TabCopy(id string) (*Tab, error) {
 	}
 	if t.BuildLight != nil {
 		l := *t.BuildLight
+		l.MoreArgs = append([]string(nil), t.BuildLight.MoreArgs...)
 		c.BuildLight = &l
+	}
+	c.MoreScripts = nil
+	for _, m := range t.MoreScripts {
+		l := *m
+		l.MoreArgs = append([]string(nil), m.MoreArgs...)
+		c.MoreScripts = append(c.MoreScripts, &l)
 	}
 	c.BackupExcludes = append([]string{}, t.BackupExcludes...)
 	c.Backups = nil

@@ -48,7 +48,7 @@ Every project is a **card**. A card can do any combination of these:
 | | |
 |---|---|
 | ⬆ **Synchronize** | Compares folders on your PC with the server and uploads **new and changed files only** – over FTP, FTPS (explicit / implicit) or SFTP. Nothing is ever deleted on the server. Uploads go through a temporary file that is renamed when complete, so the website never sees a half-uploaded file. |
-| ⚙ **Build first** | **TMS WEB Core / RAD Studio** projects compiled without the IDE (switches from `Predefines.inc`, CRLF conversion, the project's post-build event), or **Build light** – any Python script. Nothing is uploaded unless every build succeeds. |
+| ⚙ **Build first** | **TMS WEB Core / RAD Studio** projects compiled without the IDE (switches from `Predefines.inc`, CRLF conversion, the project's post-build event), or **own scripts** – Python, BAT or PowerShell; more scripts per card (you choose which one runs) and more sets of parameters per script. Nothing is uploaded unless the build succeeds. |
 | 🗜 **Back up** | Packs folders into `prefix_YYYY-MM-DD_hh-mm-ss.zip` (optionally with a note or your own name), with exclusions. |
 | ⑂ **GitHub** | Walks through the card's repositories, shows changed files with diffs, commits the ticked files and pushes (optionally pull --rebase first). Uses your installed Git – no tokens stored. |
 | ▣ **FW build & monitor** | ESP-IDF (ESP32) firmware variants from `tools\build_*.cmd`: build, flash, and a serial monitor with an input line and device reset. |
@@ -60,6 +60,8 @@ And around it:
 - **Preview** (“Check”) shows what would be uploaded without uploading anything.
 - **Exclusions** per folder pair or per card: `node_modules/`, `*.psd`, `img/raw/`, `build*/` …
 - **Master password** – server passwords encrypted with scrypt + AES-256-GCM (optional).
+- **Export / import** of all cards, groups, builds and settings in one file – passwords only on request and encrypted; import only adds what you pick.
+- **Settings in tabs** – a highlighted tab shows at a glance what a card does.
 - **Portable** – one exe and a `Leonzilla_data` folder next to it. Keep both in Dropbox and use them on several PCs.
 - **Czech and English** UI, light and dark theme, built-in guide (F1) and a PDF manual.
 
@@ -68,13 +70,15 @@ And around it:
 | | |
 |---|---|
 | ![Card detail](docs/screenshots/en-card.webp) | ![Editing a card](docs/screenshots/en-edit.webp) |
-| A card – folders, server, build | Editing a card – every change is saved immediately |
+| A card – folders, server, build | Editing a card – settings in tabs, a highlighted tab has something set |
 | ![Confirmation with a checklist](docs/screenshots/en-sync-confirm.webp) | ![Backup confirmation](docs/screenshots/en-backup-confirm.webp) |
 | Build + Synchronize with a checklist | Backup to ZIP with an optional note |
 | ![ESP32 firmware build and monitor](docs/screenshots/en-fw.webp) | ![App settings](docs/screenshots/en-settings.webp) |
-| ESP32 firmware build, flash and serial monitor | Settings – language, theme, master password |
+| ESP32 firmware build, flash and serial monitor | App settings – General, Groups, Builds |
 | ![Built-in guide](docs/screenshots/en-help.webp) | ![Light theme](docs/screenshots/en-overview-light.webp) |
 | Built-in guide (F1) | Light theme |
+| ![Choosing a script and its parameters](docs/screenshots/en-scripts.webp) | ![Import](docs/screenshots/en-import.webp) |
+| More scripts – choose one and its parameters | Import – tick what to add, nothing is overwritten |
 | ![About](docs/screenshots/en-about.webp) | |
 | About – click the logo | |
 
@@ -99,7 +103,8 @@ The guide is built in (**?** button or **F1**) and also included as a PDF: [Engl
 
 ## Security details
 
-- **Master password** (*App settings → Master password*): set it once and all server passwords in `Leonzilla_data\config.json` are encrypted (scrypt key derivation + AES-256-GCM). At every start Leonzilla shows a lock screen and asks for it; the key lives only in memory while the app runs. Change or remove it any time.
+- **Master password** (*App settings → General → Master password*): set it once and all server passwords in `Leonzilla_data\config.json` are encrypted (scrypt key derivation + AES-256-GCM). At every start Leonzilla shows a lock screen and asks for it; the key lives only in memory while the app runs. Change or remove it any time.
+- **Export** (*App settings → General*) contains server passwords only when you tick *Including server passwords*; they are then encrypted with a separate export password (scrypt + AES-256-GCM). An export without it contains no passwords at all.
 - **Without a master password** passwords are only obfuscated (AES with a key inside the app) – unreadable in the file, but anyone with both the file and Leonzilla could recover them. Use the master password if the folder is shared (Dropbox, USB stick).
 - A **forgotten master password cannot be recovered** – you just enter the server passwords again.
 - The window talks only to Leonzilla on the same PC (`127.0.0.1`, random port and token). Nothing is sent anywhere except to your own servers and Git remotes; Git sign-in is handled by Git itself, Leonzilla stores no tokens.

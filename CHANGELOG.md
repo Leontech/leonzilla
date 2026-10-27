@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.11.17 – 2026-10-27
+
+**Own scripts**
+- **More scripts per card** – *Edit card → Own script → Add script*. With more than one script the card's button says *Run scripts* and the confirmation lets you choose **which one** runs; the card remembers the choice.
+- **More sets of parameters per script** – *Add parameters* (a set may be empty = no parameters). With more sets the confirmation asks which one to use; remembered as well.
+- Cards with one script and one set of parameters work exactly as before, including their own button label.
+
+**Clearer settings**
+- **Card settings in tabs** – *Synchronization*, *Own script*, *Backups*, *GitHub*, *FW ESP32* and *Build (RAD Studio)* last. A tab that has something set is highlighted with a green dot and a short summary (e.g. "2 scripts"), so you see at a glance what the card does.
+- **App settings in tabs** – *General* (theme, language, start with Windows, parallel uploads, master password, export / import), *Groups*, *Builds (RAD Studio)*.
+
+**Export / import**
+- *App settings → General → Export* saves cards, groups, builds and general settings into one JSON file (default folder `Leonzilla_data\export`) – for backups or moving to another installation.
+- Server passwords only on request (*Including server passwords*), then encrypted with an export password (scrypt + AES-256-GCM). Without it the file contains no passwords.
+- *Import…* shows what the file contains; tick the cards, groups and builds to **add**. Nothing existing is overwritten: imported cards are new cards, groups and builds that already exist are reused, and `config.json` is backed up to `Leonzilla_data\backup` first.
+
+**Other**
+- An unchanged server password is no longer re-encrypted on every save, so `config.json` changes only when something really changed (fewer Dropbox uploads and conflicts).
+- Existing cards are not changed by this version – new settings are stored only when you use the new features.
+
 ## 1.11.16 – 2026-10-27
 
 - **Card changes are saved only with Save.** Editing a card is now a draft: *Save* writes it and locks the card, *Close without saving* puts the card back as it was (with a confirmation if something changed). Unsaved changes stay when you switch to another card (● on the tab); closing the tab asks whether to save. Before, every change was saved immediately.

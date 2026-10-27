@@ -42,7 +42,7 @@ Každý projekt je **karta**. Karta umí libovolnou kombinaci:
 | | |
 |---|---|
 | ⬆ **Synchronizovat** | Porovná složky v PC se serverem a nahraje **jen nové a změněné soubory** – přes FTP, FTPS (explicitní / implicitní) nebo SFTP. Na serveru nic nemaže. Nahrává přes dočasný soubor, takže web nikdy neuvidí napůl nahraný soubor. |
-| ⚙ **Build předem** | Projekty **TMS WEB Core / RAD Studio** bez IDE (přepínače z `Predefines.inc`, převod CRLF, post-build projektu), nebo **Build light** – libovolný Python skript. Když build selže, nic se nenahraje. |
+| ⚙ **Build předem** | Projekty **TMS WEB Core / RAD Studio** bez IDE (přepínače z `Predefines.inc`, převod CRLF, post-build projektu), nebo **vlastní skripty** – Python, BAT nebo PowerShell; víc skriptů na kartě (vybereš, který poběží) a víc variant parametrů u skriptu. Když build selže, nic se nenahraje. |
 | 🗜 **Zálohovat** | Zabalí složky do `prefix_RRRR-MM-DD_hh-mm-ss.zip` (volitelně s poznámkou nebo vlastním názvem), s vyloučením. |
 | ⑂ **GitHub** | Projde repozitáře karty, ukáže změněné soubory s rozdíly, commitne zaškrtnuté a pushne (volitelně předtím pull --rebase). Používá nainstalovaný Git – žádné tokeny neukládá. |
 | ▣ **FW build a monitor** | Varianty firmwaru ESP-IDF (ESP32) z `tools\build_*.cmd`: build, nahrání a sériový monitor s příkazovým řádkem a resetem zařízení. |
@@ -53,6 +53,8 @@ A kolem toho:
 - **Přehled** všech projektů jako dlaždice ve skupinách, s živým průběhem – víc karet může synchronizovat současně.
 - **Zkontrolovat** ukáže, co by se nahrálo, bez nahrávání.
 - **Vyloučení** u dvojice složek nebo pro celou kartu: `node_modules/`, `*.psd`, `img/raw/`, `build*/` …
+- **Export / import** všech karet, skupin, buildů a nastavení do jednoho souboru – hesla jen na přání a zašifrovaná; import jen přidá, co vybereš.
+- **Nastavení v záložkách** – zvýrazněná záložka hned ukáže, co karta dělá.
 - **Čeština a angličtina**, světlý i tmavý vzhled, návod v programu (F1) a PDF.
 
 ## Screenshoty
@@ -60,13 +62,15 @@ A kolem toho:
 | | |
 |---|---|
 | ![Detail karty](docs/screenshots/cs-card.webp) | ![Úprava karty](docs/screenshots/cs-edit.webp) |
-| Karta – složky, server, build | Úprava karty – každá změna se ukládá hned |
+| Karta – složky, server, build | Úprava karty – nastavení v záložkách, zvýrazněná je nastavená |
 | ![Potvrzení s kontrolními body](docs/screenshots/cs-sync-confirm.webp) | ![Potvrzení zálohy](docs/screenshots/cs-backup-confirm.webp) |
 | Build + Synchronizovat s kontrolními body | Záloha do ZIP s poznámkou |
 | ![FW build a monitor ESP32](docs/screenshots/cs-fw.webp) | ![Nastavení aplikace](docs/screenshots/cs-settings.webp) |
-| Build, nahrání a sériový monitor ESP32 | Nastavení – jazyk, vzhled, hlavní heslo |
+| Build, nahrání a sériový monitor ESP32 | Nastavení aplikace – Obecné, Skupiny, Buildy |
 | ![Návod v programu](docs/screenshots/cs-help.webp) | ![Světlý vzhled](docs/screenshots/cs-overview-light.webp) |
 | Návod v programu (F1) | Světlý vzhled |
+| ![Výběr skriptu a parametrů](docs/screenshots/cs-scripts.webp) | ![Import](docs/screenshots/cs-import.webp) |
+| Víc skriptů – vybereš jeden a jeho parametry | Import – zaškrtneš, co přidat, nic se nepřepíše |
 | ![O aplikaci](docs/screenshots/cs-about.webp) | |
 | O aplikaci – klik na logo | |
 
@@ -91,7 +95,8 @@ Návod je přímo v programu (tlačítko **?** nebo **F1**) a také jako PDF: [�
 
 ## Bezpečnost podrobně
 
-- **Hlavní heslo** (*Nastavení aplikace → Hlavní heslo*): stačí ho jednou nastavit a všechna hesla k serverům v `Leonzilla_data\config.json` se zašifrují (odvození klíče scrypt + AES-256-GCM). Při každém spuštění Leonzilla ukáže zamčenou obrazovku a zeptá se na něj; klíč je jen v paměti, dokud aplikace běží. Kdykoli ho jde změnit nebo zrušit.
+- **Hlavní heslo** (*Nastavení aplikace → Obecné → Hlavní heslo*): stačí ho jednou nastavit a všechna hesla k serverům v `Leonzilla_data\config.json` se zašifrují (odvození klíče scrypt + AES-256-GCM). Při každém spuštění Leonzilla ukáže zamčenou obrazovku a zeptá se na něj; klíč je jen v paměti, dokud aplikace běží. Kdykoli ho jde změnit nebo zrušit.
+- **Export** (*Nastavení aplikace → Obecné*) obsahuje hesla k serverům jen při zaškrtnutí *Včetně hesel k serverům* – pak zašifrovaná zvláštním heslem k exportu (scrypt + AES-256-GCM). Export bez něj žádná hesla neobsahuje.
 - **Bez hlavního hesla** jsou hesla jen zamaskovaná (AES s klíčem uvnitř aplikace) – v souboru nečitelná, ale kdo má soubor i Leonzillu, heslo získá. Když je složka sdílená (Dropbox, flashka), hlavní heslo používej.
 - **Zapomenuté hlavní heslo nejde obnovit** – hesla k serverům pak jen zadáš znovu.
 - Okno komunikuje jen s Leonzillou na tomtéž PC (`127.0.0.1`, náhodný port a token). Nikam jinam než na tvoje servery a Git repozitáře se nic neposílá; přihlášení ke Gitu řeší Git sám, Leonzilla žádné tokeny neukládá.

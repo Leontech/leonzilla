@@ -527,7 +527,7 @@ func (j *Job) setStep(i int, state, note string) {
 
 type buildPlan struct {
 	b     *Build
-	light *BuildLight // card's "Build light" (Python script) instead of b
+	light *BuildLight // one of the card's own scripts ("Build light") instead of b
 	dproj *DprojInfo
 	post  string // expanded post-build command
 	info  string // version info for the post-build (environment variable)
@@ -577,10 +577,41 @@ func (r *Runner) prepareBuilds(j *Job, tab *Tab) ([]*buildPlan, error) {
 		}
 		plans = append(plans, p)
 	}
-	if tab.BuildLight != nil && tab.BuildLight.Script != "" {
-		l := *tab.BuildLight
+	// own scripts: with more of them only the one chosen in the confirmation runs (never all in a row);
+	// a script with more variants of parameters runs with the chosen variant
+	own := tab.scripts()
+	var run *BuildLight
+	switch {
+	case len(own) == 1:
+		run = own[0]
+	case len(own) > 1:
+		for _, sc := range own {
+			if sc.key() == j.script {
+				run = sc
+			}
+		}
+		if run == nil {
+			return nil, errors.New(T("Není vybraný žádný skript"))
+		}
+	}
+	if run != nil {
+		l := *run
+		if j.scriptArg != nil {
+			ok := false
+			for _, a := range run.argVariants() {
+				ok = ok || a == strings.TrimSpace(*j.scriptArg)
+			}
+			if !ok {
+				return nil, errors.New(T("Vybrané parametry skriptu už na kartě nejsou"))
+			}
+			l.Args = strings.TrimSpace(*j.scriptArg)
+		}
 		p := &buildPlan{light: &l, steps: []int{-1, len(j.Steps), -1, -1}}
-		j.Steps = append(j.Steps, &Step{Name: T("Skript") + ": " + l.name(), State: "pending"})
+		name := l.name()
+		if l.Args != "" {
+			name += " " + l.Args
+		}
+		j.Steps = append(j.Steps, &Step{Name: T("Skript") + ": " + name, State: "pending"})
 		plans = append(plans, p)
 	}
 	if len(plans) == 0 {
@@ -795,6 +826,13 @@ func (r *Runner) runBuilds(ctx context.Context, j *Job, plans []*buildPlan) (str
 	if len(plans) == 1 && plans[0].light != nil {
 		// only the card's own script: Leonzilla does not know what it does (it may upload by itself), so just say it went fine
 		return "ok", fmt.Sprintf(T("Skript „%s“ doběhl bez chyby"), filepath.Base(strings.Trim(strings.TrimSpace(plans[0].light.Script), `"`)))
+	}
+	scriptsOnly := true
+	for _, p := range plans {
+		scriptsOnly = scriptsOnly && p.light != nil
+	}
+	if scriptsOnly {
+		return "ok", fmt.Sprintf(T("Skripty doběhly bez chyby (%d)"), len(plans))
 	}
 	return "ok", fmt.Sprintf(T("Build hotový (%d)"), len(plans))
 }

@@ -34,21 +34,37 @@ const editing = (id) => S.editing.has(id);
 const groups = () => S.settings.groups || [];
 const builds = () => S.settings.builds || [];
 const cardBuilds = (t) => (t.builds || []).map((id) => builds().find((b) => b.id === id)).filter(Boolean);
-// "Build light" (in the UI "Vlastní skript" / "Skript"): the card's own script (Python, BAT, PowerShell) run like a build (then upload)
-const hasLight = (t) => !!(t.buildLight && (t.buildLight.script || "").trim());
-// own label of the main button (build light), e.g. "Build a nahrát na web"; "" = default label
-const lightLabel = (t) => (hasLight(t) ? (t.buildLight.label || "").trim() : "");
-const lightName = (t) => (t.buildLight?.script || "").trim().replace(/^"|"$/g, "").split(/[\\/]/).pop();
-// kind of the Build light script by its extension (shown in the build list / confirmation)
-const lightKind = (t) => {
-  const ext = (lightName(t).match(/\.([^.]+)$/) || [])[1]?.toLowerCase() || "";
+// "Build light" (in the UI "Vlastní skript" / "Skript"): the card's own scripts (Python, BAT, PowerShell) run like a build (then upload).
+// The first one is stored in buildLight (as before, so existing cards keep working), more of them in moreScripts.
+// One script = the main button runs it (own label); more = "Spustit skripty" and the confirmation asks which ones to run.
+const lights = (t) => [t.buildLight, ...(t.moreScripts || [])].filter((l) => l && (l.script || "").trim());
+const hasLight = (t) => lights(t).length > 0;
+const multiLight = (t) => lights(t).length > 1;
+// own label of the main button (only with one script), e.g. "Build a nahrát na web"; "" = default label
+const lightLabel = (t) => (lights(t).length === 1 ? (lights(t)[0].label || "").trim() : "");
+const scPath = (l) => (l?.script || "").trim().replace(/^"+|"+$/g, "");
+const scName = (l) => scPath(l).split(/[\\/]/).pop();
+// name in the choice of scripts: its label, otherwise the file name
+const scTitle = (l) => (l?.label || "").trim() || scName(l);
+// same as BuildLight.key() in Go – identifies the script chosen in the confirmation
+const scKey = (l) => scPath(l) + "|" + (l?.args || "").trim();
+// variants of the parameters of a script: args (the first, may be empty) + moreArgs, without duplicates
+const scArgs = (l) => [...new Set([(l?.args || "").trim(), ...(l?.moreArgs || []).map((a) => (a || "").trim())])];
+const argText = (a) => a || tr("bez parametrů");
+const lightName = (t) => scName(lights(t)[0]);
+// kind of a script by its extension (shown in the build list / confirmation)
+const scKind = (l) => {
+  const ext = (scName(l).match(/\.([^.]+)$/) || [])[1]?.toLowerCase() || "";
   return { py: "Python", pyw: "Python", bat: "BAT", cmd: "CMD", ps1: "PowerShell", exe: "EXE" }[ext] || (ext ? ext.toUpperCase() : tr("skript"));
 };
+const lightKind = (t) => scKind(lights(t)[0]);
+// "Skript" / "Skripty" for a card that runs only its own scripts
+const scriptWord = (t) => (multiLight(t) ? "Skripty" : "Skript");
 const hasBuilds = (t) => cardBuilds(t).length > 0 || hasLight(t);
 // the card runs only its own script (no RAD Studio build) – the UI then says "Skript" instead of "Build"
 // (stored in config.json as buildLight like before, so existing cards keep working)
 const scriptOnly = (t) => hasLight(t) && cardBuilds(t).length === 0;
-const buildNames = (t) => [...cardBuilds(t).map((b) => b.name), ...(hasLight(t) ? [lightName(t)] : [])];
+const buildNames = (t) => [...cardBuilds(t).map((b) => b.name), ...(hasLight(t) ? [multiLight(t) ? lights(t).map(scTitle).join(" · ") : lightName(t)] : [])];
 // "Info k verzi" (version info) of a build, passed to the post-build in LEONZILLA_VERSION_INFO; not set yet = build name
 const buildInfo = (b) => (b.versionInfo ?? b.name ?? "").replace(/\s+/g, " ").trim().slice(0, 80);
 // what the card will send: last text used on this card, otherwise the build setting
@@ -69,7 +85,7 @@ const syncReady = (t) => !!(t.conn.host && t.pairs.some((p) => p.enabled && (p.l
 const syncHalfText = (t) => (t.conn.host ? "chybí zapnutá složka v PC" : "chybí server") + " – doplň ho, nebo dvojici složek odeber, pokud karta synchronizovat nemá";
 const mainMode = (t) => (hasBuilds(t) ? (syncReady(t) ? "buildsync" : "build") : syncReady(t) ? "sync" : "");
 // default text of the main button (without the card's own label)
-const mainLabelDefault = (t) => (scriptOnly(t) ? { buildsync: "Skript + Synchronizovat", build: "Spustit skript", sync: "Synchronizovat" }
+const mainLabelDefault = (t) => (scriptOnly(t) ? (multiLight(t) ? { buildsync: "Skripty + Synchronizovat", build: "Spustit skripty", sync: "Synchronizovat" } : { buildsync: "Skript + Synchronizovat", build: "Spustit skript", sync: "Synchronizovat" })
   : { buildsync: "Build + Synchronizovat", build: "Build", sync: "Synchronizovat" })[mainMode(t)] || "";
 const mainLabel = (t) => { const m = mainMode(t); if ((m === "buildsync" || m === "build") && lightLabel(t)) return lightLabel(t); return mainLabelDefault(t); };
 const groupOf = (t) => (groups().some((g) => g.id === t.group) ? t.group : "");
@@ -321,6 +337,7 @@ function markDirty(t) {
   const first = !S.dirty.has(t.id);
   S.dirty.add(t.id);
   if (first) { renderTabs(); drawEditNote(t); }
+  refreshEditTabs(t);
 }
 function drawEditNote(t) {
   const el = $("#edit-note");
@@ -578,6 +595,7 @@ function renderMain() {
   }
   if (!editing(t.id)) return renderView(t);
   const c = t.conn;
+  const etab = editTabOf(t);
   main.innerHTML = `
   <div class="page">
     <section class="hero is-editing">
@@ -609,14 +627,15 @@ function renderMain() {
       </div>
     </section>
 
+    <nav class="etabs" id="etabs" role="tablist" aria-label="Nastavení karty">${editTabsHtml(t, etab)}</nav>
+    <div class="etab-pane" data-pane="sync" role="tabpanel"${etab === "sync" ? "" : " hidden"}>
     <section class="sec">
       <div class="sec-h"><h2>Synchronizace na server – složky</h2><span class="hint">vlevo složka v PC, vpravo cíl na serveru · nepovinné</span></div>
       <div class="pairs" id="pairs"></div>
       <button class="ghost small add-pair" id="btn-add-pair" style="margin-top:10px">${icon("plus")}Přidat dvojici složek</button>
     </section>
-
-    <details class="sec" id="sec-server" open>
-      <summary><div class="sec-h">${icon("chev")}<h2>Server</h2><span class="hint">${c.host ? esc(`${PROTO[c.protocol]} · ${c.host}${c.port ? ":" + c.port : ""}`) : "přístupové údaje od providera · nepovinné"}</span></div></summary>
+    <section class="sec" id="sec-server">
+      <div class="sec-h"><h2>Server</h2><span class="hint">${c.host ? esc(`${PROTO[c.protocol]} · ${c.host}${c.port ? ":" + c.port : ""}`) : "přístupové údaje od providera · nepovinné"}</span></div>
       <div class="form">
         <div class="f c3"><label for="f-proto">Protokol</label>
           <select id="f-proto">${Object.entries(PROTO).map(([k, v]) => `<option value="${k}" ${k === c.protocol ? "selected" : ""}>${v}</option>`).join("")}</select></div>
@@ -638,45 +657,32 @@ function renderMain() {
           <span class="test-msg" id="test-msg">${c.protocol === "sftp" && c.hostKey ? "Důvěryhodný klíč serveru: " + esc(c.hostKey) : ""}</span>
         </div>
       </div>
-    </details>
-
-    <details class="sec" id="sec-build" open>
-      <summary><div class="sec-h">${icon("chev")}<h2>Build</h2><span class="hint">${cardBuilds(t).length ? `${cardBuilds(t).length} v pořadí` : "nepovinné – bez serveru bude karta jen buildovat"}</span></div></summary>
-      <div class="form"><div class="f c12" id="f-builds"></div></div>
-    </details>
-
-    <details class="sec" id="sec-light" open>
-      <summary><div class="sec-h">${icon("chev")}<h2>Vlastní skript</h2><span class="hint" id="light-hint">${hasLight(t) ? esc(lightName(t)) : "nepovinné – vlastní skript (Python, BAT, PowerShell) místo buildu RAD Studia"}</span></div></summary>
-      <div class="form">
-        <div class="f c12"><label for="f-lscript">Skript <span class="note">– Python (.py), dávka (.bat, .cmd) nebo PowerShell (.ps1); spustí se ve své složce; když doběhne bez chyby (kód 0), karta nahraje složky na server. Na kartě vypadá jako build: <i>Build + Synchronizovat</i>, <i>Jen build</i>, <i>Jen nahrát</i>.</span></label>
-          <div class="path-field"><input id="f-lscript" value="${esc(t.buildLight?.script || "")}" placeholder="C:\\Projekty\\web\\build.py · build.bat" spellcheck="false">
-          ${S.canPickDir ? `<button id="f-lscript-pick" title="Vybrat skript">${icon("file")}</button>` : ""}</div></div>
-        <div class="f c12"><label for="f-largs">Parametry skriptu <span class="note">– nepovinné, např. <code>--release</code></span></label>
-          <input id="f-largs" value="${esc(t.buildLight?.args || "")}" spellcheck="false" placeholder="bez parametrů"></div>
-        <div class="f c12"><label for="f-llabel">Popisek tlačítka <span class="note">– nepovinné, např. <i>Build a nahrát na leotech.cz</i> · prázdné = výchozí popisek</span></label>
-          <input id="f-llabel" value="${esc(t.buildLight?.label || "")}" maxlength="60" spellcheck="false" placeholder="${esc(mainLabelDefault(t) || "Spustit skript")}"></div>
-      </div>
-    </details>
-
-    <details class="sec" id="sec-check" open>
-      <summary><div class="sec-h">${icon("chev")}<h2>Kontrola před synchronizací</h2><span class="hint">${(t.checklist || []).length ? `${t.checklist.length} ${t.checklist.length === 1 ? "bod" : t.checklist.length < 5 ? "body" : "bodů"}` : "nepovinné"}</span></div></summary>
+    </section>
+    <section class="sec" id="sec-check">
+      <div class="sec-h"><h2>Kontrola před synchronizací</h2><span class="hint">${(t.checklist || []).length ? `${t.checklist.length} ${t.checklist.length === 1 ? "bod" : t.checklist.length < 5 ? "body" : "bodů"}` : "nepovinné"}</span></div>
       <div class="form">
         <div class="f c12"><label for="f-check">Co musíš ověřit, než se nahraje na server – jeden bod na řádek. Před každou synchronizací je budeš muset všechny odškrtnout. Prázdné = synchronizace bez kontroly.</label>
           <textarea id="f-check" spellcheck="false" style="min-height:84px" placeholder="Je v config.h nastaveno #define PRODUCTION?&#10;Je zkompilovaná release verze?">${esc((t.checklist || []).join("\n"))}</textarea></div>
       </div>
-    </details>
-
-    <details class="sec" id="sec-ex" open>
-      <summary><div class="sec-h">${icon("chev")}<h2>Vyloučit ve všech složkách</h2><span class="hint">${t.excludes.length} pravidel – platí pro všechny dvojice této karty</span></div></summary>
+    </section>
+    <section class="sec" id="sec-ex">
+      <div class="sec-h"><h2>Vyloučit ve všech složkách</h2><span class="hint">${t.excludes.length} pravidel – platí pro všechny dvojice této karty</span></div>
       <div class="form">
         <div class="f c12"><label for="f-ex">Jedno pravidlo na řádek. <code>složka/</code> = složka s tímto názvem kdekoli, <code>*.psd</code> = soubory podle masky, <code>img/raw/</code> = konkrétní cesta. Řádek s # je poznámka.</label>
           <textarea id="f-ex" spellcheck="false">${esc(t.excludes.join("\n"))}</textarea></div>
         <div class="f c12"><div><button class="plain small" id="btn-ex-default">Doplnit výchozí pravidla</button></div></div>
       </div>
-    </details>
-
-    <details class="sec" id="sec-backup" open>
-      <summary><div class="sec-h">${icon("chev")}<h2>Zálohování</h2><span class="hint">${(t.backups || []).length ? `${(t.backups || []).length} ${(t.backups || []).length === 1 ? "záloha" : (t.backups || []).length < 5 ? "zálohy" : "záloh"}` : "nepovinné – po nastavení přibude tlačítko Zálohovat"}</span></div></summary>
+    </section>
+    </div>
+    <div class="etab-pane" data-pane="light" role="tabpanel"${etab === "light" ? "" : " hidden"}>
+    <section class="sec" id="sec-light">
+      <div class="sec-h"><h2>Vlastní skript</h2><span class="hint" id="light-hint">${esc(lightHint(t))}</span></div>
+      <div class="form" id="f-lights"></div>
+    </section>
+    </div>
+    <div class="etab-pane" data-pane="backup" role="tabpanel"${etab === "backup" ? "" : " hidden"}>
+    <section class="sec" id="sec-backup">
+      <div class="sec-h"><h2>Zálohování</h2><span class="hint">${(t.backups || []).length ? `${(t.backups || []).length} ${(t.backups || []).length === 1 ? "záloha" : (t.backups || []).length < 5 ? "zálohy" : "záloh"}` : "nepovinné – po nastavení přibude tlačítko Zálohovat"}</span></div>
       <p class="note" style="margin:0 0 10px">Složka se zabalí do ZIP v cílové složce jako <code>prefix_RRRR-MM-DD_hh-mm-ss.zip</code>.</p>
       <div class="pairs" id="bpairs"></div>
       <button class="ghost small add-pair" id="btn-add-backup" style="margin-top:10px">${icon("plus")}Přidat zálohu</button>
@@ -685,10 +691,11 @@ function renderMain() {
         <div class="f c12"><label for="f-bex">Vyloučit ve všech zálohách této karty – jedno pravidlo na řádek (stejně jako u synchronizace).</label>
           <textarea id="f-bex" spellcheck="false" style="min-height:90px">${esc((t.backupExcludes || []).join("\n"))}</textarea></div>
       </div>
-    </details>
-
-    <details class="sec" id="sec-git" open>
-      <summary><div class="sec-h">${icon("chev")}<h2>GitHub</h2><span class="hint">${(t.git || []).length ? `${(t.git || []).length} ${(t.git || []).length === 1 ? "repozitář" : (t.git || []).length < 5 ? "repozitáře" : "repozitářů"}` : "nepovinné – po nastavení přibude tlačítko GitHub"}</span></div></summary>
+    </section>
+    </div>
+    <div class="etab-pane" data-pane="git" role="tabpanel"${etab === "git" ? "" : " hidden"}>
+    <section class="sec" id="sec-git">
+      <div class="sec-h"><h2>GitHub</h2><span class="hint">${(t.git || []).length ? `${(t.git || []).length} ${(t.git || []).length === 1 ? "repozitář" : (t.git || []).length < 5 ? "repozitáře" : "repozitářů"}` : "nepovinné – po nastavení přibude tlačítko GitHub"}</span></div>
       ${S.gitFound ? "" : `<p class="bwarn">Na tomto PC není nainstalovaný Git (Git for Windows) – bez něj tlačítko GitHub nefunguje.</p>`}
       <p class="note" style="margin:0 0 10px">Vyber složky s git repozitáři. Kam se posílá, si každý repozitář pamatuje sám (origin). Tlačítko GitHub je projde v tomto pořadí.</p>
       <div class="pairs" id="gitrepos"></div>
@@ -696,18 +703,91 @@ function renderMain() {
       <div class="form" style="margin-top:12px"><div class="f c12 checks">
         <label class="check"><input type="checkbox" id="f-gitpull" ${t.gitPull ? "checked" : ""}>Před pushem stáhnout změny ze serveru (pull --rebase) – když commituješ i z jiného PC</label>
       </div></div>
-    </details>
-
-    <details class="sec" id="sec-fw" open>
-      <summary><div class="sec-h">${icon("chev")}<h2>FW build a monitor (ESP32)</h2><span class="hint">${hasFw(t) ? `${t.fw.variants.length} ${t.fw.variants.length === 1 ? "varianta" : t.fw.variants.length < 5 ? "varianty" : "variant"}${hasMon(t) ? " · monitor" : ""}` : hasMon(t) ? "monitor" : "nepovinné – po nastavení přibude tlačítko FW build / Monitor"}</span></div></summary>
+    </section>
+    </div>
+    <div class="etab-pane" data-pane="fw" role="tabpanel"${etab === "fw" ? "" : " hidden"}>
+    <section class="sec" id="sec-fw">
+      <div class="sec-h"><h2>FW build a monitor (ESP32)</h2><span class="hint">${hasFw(t) ? `${t.fw.variants.length} ${t.fw.variants.length === 1 ? "varianta" : t.fw.variants.length < 5 ? "varianty" : "variant"}${hasMon(t) ? " · monitor" : ""}` : hasMon(t) ? "monitor" : "nepovinné – po nastavení přibude tlačítko FW build / Monitor"}</span></div>
       <div class="form" id="fwbox"></div>
-    </details>
+    </section>
+    </div>
+    <div class="etab-pane" data-pane="build" role="tabpanel"${etab === "build" ? "" : " hidden"}>
+    <section class="sec" id="sec-build">
+      <div class="sec-h"><h2>Build</h2><span class="hint">${cardBuilds(t).length ? `${cardBuilds(t).length} v pořadí` : "nepovinné – bez serveru bude karta jen buildovat"}</span></div>
+      <div class="form"><div class="f c12" id="f-builds"></div></div>
+    </section>
+    </div>
   </div>`;
 
   renderPairs();
   bindMain(t);
+  bindEditTabs(t);
   updateSyncButton();
   showPathEnds();
+}
+
+/* card settings as tabs: a tab that has something set is highlighted.
+   Only the layout – all fields, ids and saving are the same as with the former sections. */
+// RAD Studio (TMS WEB Core) is specific, so its tab is the last one
+const EDIT_TABS = [
+  ["sync", "Synchronizace"],
+  ["light", "Vlastní skript"],
+  ["backup", "Zálohování"],
+  ["git", "GitHub"],
+  ["fw", "FW ESP32"],
+  ["build", "Build (RAD Studio)"],
+];
+const plural = (n, one, few, many) => `${n} ${n === 1 ? one : n >= 2 && n <= 4 ? few : many}`;
+// what is set on each tab: "" = nothing (tab shown dimmed)
+function editTabNote(t, k) {
+  switch (k) {
+    case "sync": {
+      const n = (t.pairs || []).filter((p) => (p.local || "").trim()).length;
+      return [t.conn.host ? t.conn.host : "", n ? plural(n, "složka", "složky", "složek") : ""].filter(Boolean).join(" · ");
+    }
+    case "build": return cardBuilds(t).length ? plural(cardBuilds(t).length, "build", "buildy", "buildů") : "";
+    case "light": return hasLight(t) ? (multiLight(t) ? plural(lights(t).length, "skript", "skripty", "skriptů") : lightName(t)) : "";
+    case "backup": { const n = (t.backups || []).filter((b) => (b.source || "").trim()).length; return n ? plural(n, "záloha", "zálohy", "záloh") : ""; }
+    case "git": { const n = (t.git || []).filter((g) => (g.path || "").trim()).length; return n ? plural(n, "repozitář", "repozitáře", "repozitářů") : ""; }
+    case "fw": return [hasFw(t) ? plural(t.fw.variants.length, "varianta", "varianty", "variant") : "", hasMon(t) ? "monitor" : ""].filter(Boolean).join(" · ");
+  }
+  return "";
+}
+// open tab of the card (kept while the app runs); first time = the first tab that has something set
+function editTabOf(t) {
+  S.editTab ||= {};
+  if (!S.editTab[t.id]) S.editTab[t.id] = (EDIT_TABS.find(([k]) => editTabNote(t, k)) || EDIT_TABS[0])[0];
+  return S.editTab[t.id];
+}
+function editTabsHtml(t, active) {
+  return EDIT_TABS.map(([k, name]) => {
+    const note = editTabNote(t, k);
+    return `<button type="button" class="etab${note ? " set" : ""}${k === active ? " on" : ""}" data-etab="${k}" role="tab" aria-selected="${k === active}" title="${note ? "Nastaveno: " + esc(note) : "Nic nenastaveno"}"><span class="etab-dot" aria-hidden="true"></span><span class="etab-name">${name}</span><span class="etab-note">${note ? esc(note) : "–"}</span></button>`;
+  }).join("");
+}
+function bindEditTabs(t) {
+  const nav = $("#etabs");
+  if (!nav) return;
+  nav.onclick = (e) => {
+    const b = e.target.closest("[data-etab]");
+    if (!b) return;
+    S.editTab[t.id] = b.dataset.etab;
+    document.querySelectorAll(".etab-pane").forEach((p) => (p.hidden = p.dataset.pane !== b.dataset.etab));
+    refreshEditTabs(t);
+    showPathEnds();
+  };
+  nav.onkeydown = (e) => { // ← → between the tabs
+    if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+    const ks = EDIT_TABS.map(([k]) => k), i = ks.indexOf(S.editTab[t.id]);
+    const k = ks[(i + (e.key === "ArrowRight" ? 1 : ks.length - 1)) % ks.length];
+    nav.querySelector(`[data-etab="${k}"]`)?.click();
+    nav.querySelector(`[data-etab="${k}"]`)?.focus();
+  };
+}
+// highlight of the tabs follows the changes (called on every change of the draft)
+function refreshEditTabs(t) {
+  const nav = $("#etabs");
+  if (nav && S.current === t.id && editing(t.id)) nav.innerHTML = editTabsHtml(t, editTabOf(t));
 }
 
 function lastBuildText(t) {
@@ -1061,7 +1141,7 @@ function renderOverview() {
 
 function cardKinds(t) {
   const k = [];
-  if (hasBuilds(t)) k.push(scriptOnly(t) ? "Skript" : "Build");
+  if (hasBuilds(t)) k.push(scriptOnly(t) ? scriptWord(t) : "Build");
   if (hasBackups(t)) k.push(activeBackups(t).length === 1 ? "Záloha" : `${activeBackups(t).length} zálohy`);
   if (hasGit(t)) k.push(activeGit(t).length === 1 ? "GitHub (1 repozitář)" : `GitHub (${activeGit(t).length} repozitáře)`);
   if (hasFw(t)) k.push(`FW build (${t.fw.variants.map((v) => v.name).join(", ")})`);
@@ -1083,7 +1163,7 @@ function tileInner(t) {
     </header>
     <p class="srv">${esc(cardKinds(t))}</p>
     ${syncSet(t) ? `<p class="last err">Synchronizace nedokončená – ${t.conn.host ? "chybí složka" : "chybí server"}</p>` : ""}
-    ${hasBuilds(t) ? `<p class="tbuild">${icon("gear")}${scriptOnly(t) ? "Skript" : "Build"}: ${buildNames(t).map(esc).join(" → ")}</p>` : ""}
+    ${hasBuilds(t) ? `<p class="tbuild">${icon("gear")}${scriptOnly(t) ? scriptWord(t) : "Build"}: ${buildNames(t).map(esc).join(" → ")}</p>` : ""}
     <div class="st">${tileStatus(t)}</div>
     <div class="tile-actions">
       ${mm ? tileSyncButton(t) : ""}
@@ -1099,7 +1179,7 @@ function tileInner(t) {
     <p class="srv">${c.host ? `${esc(c.user ? c.user + "@" : "")}${esc(c.host)} · ${PROTO[c.protocol]}` : "server není nastavený"}</p>
     <p class="tg">${on.length ? `${on.length} ${on.length === 1 ? "složka" : on.length < 5 ? "složky" : "složek"} → <span class="mono">${targets}</span>` : "žádná zapnutá složka"}</p>
     ${(t.checklist || []).length ? `<p class="tcheck">${icon("lock")}${t.checklist.length} ${t.checklist.length === 1 ? "kontrola" : t.checklist.length < 5 ? "kontroly" : "kontrol"} před synchronizací</p>` : ""}
-    ${hasBuilds(t) ? `<p class="tbuild">${icon("gear")}${scriptOnly(t) ? "Skript" : "Build"}: ${buildNames(t).map(esc).join(" → ")}</p>` : ""}
+    ${hasBuilds(t) ? `<p class="tbuild">${icon("gear")}${scriptOnly(t) ? scriptWord(t) : "Build"}: ${buildNames(t).map(esc).join(" → ")}</p>` : ""}
     <div class="st">${tileStatus(t)}</div>
     <div class="tile-actions">
       <button class="ghost" data-act="check"${running(t.id) ? " disabled" : ""}>Zkontrolovat</button>
@@ -1107,7 +1187,7 @@ function tileInner(t) {
     </div>
     ${hasBuilds(t) || hasBackups(t) || hasGit(t) || hasFw(t) || hasMon(t) ? `<div class="tile-more">
       ${xb(true)}${hasBackups(t) || hasGit(t) || hasFw(t) || hasMon(t) ? `<span class="spacer"></span>` : ""}
-      ${hasBuilds(t) ? `<button class="link" data-act="onlybuild">${scriptOnly(t) ? "Jen skript" : "Jen build"}</button><button class="link" data-act="onlysync">Jen nahrát</button>` : ""}</div>` : ""}`;
+      ${hasBuilds(t) ? `<button class="link" data-act="onlybuild">${scriptOnly(t) ? (multiLight(t) ? "Jen skripty" : "Jen skript") : "Jen build"}</button><button class="link" data-act="onlysync">Jen nahrát</button>` : ""}</div>` : ""}`;
 }
 
 function tileSyncButton(t) {
@@ -1116,7 +1196,7 @@ function tileSyncButton(t) {
   let pct = 0, label = mainLabel(t), indet = false;
   if (busy) {
     if (j?.backup) { indet = true; label = "Záloha…"; }
-    else if (j?.phase === "building") { indet = true; const k = (j.steps || []).findIndex((x) => x.state === "running"); label = scriptOnly(t) ? "Skript běží…" : `Build ${k + 1} / ${(j.steps || []).length}`; }
+    else if (j?.phase === "building") { indet = true; const k = (j.steps || []).findIndex((x) => x.state === "running"); label = scriptOnly(t) ? (multiLight(t) ? "Skripty běží…" : "Skript běží…") : `Build ${k + 1} / ${(j.steps || []).length}`; }
     else if (!j || j.phase !== "uploading" || j.preview) { indet = true; label = j?.preview ? "Kontroluji…" : j?.phase === "scanning" ? "Porovnávám…" : "Připojuji…"; }
     else {
       pct = j.bytesTotal > 0 ? Math.min(100, (j.bytesDone / j.bytesTotal) * 100) : (j.filesTotal ? (j.filesDone / j.filesTotal) * 100 : 0);
@@ -1835,20 +1915,86 @@ function openGitWindow(t) {
 
 /* ------------------------------------------------------------------ Build light (own script) */
 
+// hint in the head of the "Vlastní skript" section
+function lightHint(t) {
+  const n = lights(t).length;
+  if (!n) return "nepovinné – vlastní skript (Python, BAT, PowerShell) místo buildu RAD Studia";
+  return n === 1 ? lightName(t) : `${n} ${n < 5 ? "skripty" : "skriptů"} – při spuštění vybereš, který poběží`;
+}
+
+// "Vlastní skript" in the card editing: one or more scripts (the first = buildLight, the next ones = moreScripts)
 function bindLight(t) {
-  const sc = $("#f-lscript"), ar = $("#f-largs"), ll = $("#f-llabel");
-  if (!sc) return;
-  const cfg = () => (t.buildLight ||= { script: "", args: "", label: "" });
-  const hint = () => { $("#light-hint").textContent = hasLight(t) ? lightName(t) : "nepovinné – vlastní skript (Python, BAT, PowerShell) místo buildu RAD Studia"; updateSyncButton(); };
-  sc.oninput = () => { cfg().script = sc.value.trim(); hint(); scheduleSave(t); };
-  ar.oninput = () => { cfg().args = ar.value; scheduleSave(t); };
-  if (ll) ll.oninput = () => { cfg().label = ll.value; updateSyncButton(); scheduleSave(t); };
-  $("#f-lscript-pick")?.addEventListener("click", async () => {
-    try {
-      const r = await api("POST", "/api/pickfile", { title: tr("Vyber skript"), start: sc.value, filterName: tr("Skript (*.py, *.bat, *.cmd, *.ps1)"), filterSpec: "*.py;*.bat;*.cmd;*.ps1" });
-      if (!r.cancelled) { sc.value = r.path; cfg().script = r.path; hint(); scheduleSave(t, 0); }
-    } catch (e) { toast(e.message, true); }
-  });
+  const box = $("#f-lights");
+  if (!box) return;
+  const empty = () => ({ script: "", args: "", label: "" });
+  const list = () => [t.buildLight || empty(), ...(t.moreScripts || [])];
+  const store = (arr) => { t.buildLight = arr[0] || null; t.moreScripts = arr.slice(1); };
+  const changed = () => { $("#light-hint").textContent = lightHint(t); updateSyncButton(); };
+  const draw = () => {
+    const arr = list(), multi = arr.length > 1;
+    box.innerHTML = arr.map((l, i) => `
+      ${multi ? `<div class="f c12 lhead"><span class="lab">Skript ${i + 1}</span><button type="button" class="icon-btn small" data-ldel="${i}" title="Odebrat skript">${icon("x")}</button></div>` : ""}
+      <div class="f c12"><label for="f-lscript${i}">Skript ${i === 0 ? `<span class="note">– Python (.py), dávka (.bat, .cmd) nebo PowerShell (.ps1); spustí se ve své složce; když doběhne bez chyby (kód 0), karta nahraje složky na server. Na kartě vypadá jako build: <i>Build + Synchronizovat</i>, <i>Jen build</i>, <i>Jen nahrát</i>.</span>` : ""}</label>
+        <div class="path-field"><input id="f-lscript${i}" data-li="${i}" data-lk="script" value="${esc(l.script || "")}" placeholder="C:\\Projekty\\web\\build.py · build.bat" spellcheck="false">
+        ${S.canPickDir ? `<button type="button" data-lpick="${i}" title="Vybrat skript">${icon("file")}</button>` : ""}</div></div>
+      <div class="f c12"><label for="f-largs${i}">Parametry skriptu <span class="note">– nepovinné, např. <code>--release</code>${(l.moreArgs || []).length ? " · při spuštění vybereš, se kterými poběží" : ""}</span></label>
+        <div class="largs">
+          <div class="larg"><input id="f-largs${i}" data-li="${i}" data-lk="args" value="${esc(l.args || "")}" spellcheck="false" placeholder="bez parametrů"></div>
+          ${(l.moreArgs || []).map((a, k) => `<div class="larg"><input data-li="${i}" data-lma="${k}" value="${esc(a || "")}" spellcheck="false" placeholder="bez parametrů"><button type="button" class="icon-btn small" data-li="${i}" data-lmadel="${k}" title="Odebrat parametry">${icon("x")}</button></div>`).join("")}
+          <div><button type="button" class="ghost small" data-laadd="${i}">${icon("plus")}Přidat parametry</button></div>
+        </div></div>
+      <div class="f c12"><label for="f-llabel${i}">${multi ? `Název v nabídce <span class="note">– nepovinné, např. <i>Vydat na GitHub</i> · prázdné = název souboru · s jediným skriptem je to popisek tlačítka</span>` : `Popisek tlačítka <span class="note">– nepovinné, např. <i>Build a nahrát na leotech.cz</i> · prázdné = výchozí popisek</span>`}</label>
+        <input id="f-llabel${i}" data-li="${i}" data-lk="label" value="${esc(l.label || "")}" maxlength="60" spellcheck="false" placeholder="${esc(multi ? scName(l) || "název souboru" : mainLabelDefault(t) || "Spustit skript")}"></div>`).join("") + `
+      <div class="f c12 row-btns"><button type="button" class="ghost small" id="f-ladd">${icon("plus")}Přidat skript</button>
+        <span class="note">${multi ? "Na kartě je tlačítko <i>Spustit skripty</i>; v potvrzení vybereš, který skript poběží." : "Víc skriptů = na kartě tlačítko <i>Spustit skripty</i> a při spuštění vybereš, který poběží."}</span></div>`;
+    box.querySelectorAll("[data-lk]").forEach((inp) => (inp.oninput = () => {
+      const arr = list(), i = +inp.dataset.li, k = inp.dataset.lk;
+      arr[i] = { ...empty(), ...arr[i], [k]: k === "script" ? inp.value.trim() : inp.value };
+      store(arr);
+      changed();
+      scheduleSave(t);
+    }));
+    // more variants of the parameters (moreArgs): with more of them the confirmation asks which one
+    const setMore = (i, fn) => { const arr = list(); const l = { ...empty(), ...arr[i] }; l.moreArgs = fn([...(l.moreArgs || [])]); if (!l.moreArgs.length) { delete l.moreArgs; delete l.lastArgs; } arr[i] = l; store(arr); };
+    box.querySelectorAll("[data-lma]").forEach((inp) => (inp.oninput = () => {
+      setMore(+inp.dataset.li, (m) => { m[+inp.dataset.lma] = inp.value; return m; });
+      changed(); scheduleSave(t);
+    }));
+    box.querySelectorAll("[data-lmadel]").forEach((btn) => (btn.onclick = () => {
+      setMore(+btn.dataset.li, (m) => { m.splice(+btn.dataset.lmadel, 1); return m; });
+      draw(); changed(); scheduleSave(t, 0);
+    }));
+    box.querySelectorAll("[data-laadd]").forEach((btn) => (btn.onclick = () => {
+      const i = +btn.dataset.laadd;
+      setMore(i, (m) => [...m, ""]);
+      draw(); changed();
+      const ins = box.querySelectorAll(`[data-lma][data-li="${i}"]`);
+      ins[ins.length - 1]?.focus();
+      scheduleSave(t, 0);
+    }));
+    box.querySelectorAll("[data-lpick]").forEach((btn) => (btn.onclick = async () => {
+      const i = +btn.dataset.lpick, inp = $(`#f-lscript${i}`, box);
+      try {
+        const r = await api("POST", "/api/pickfile", { title: tr("Vyber skript"), start: inp.value, filterName: tr("Skript (*.py, *.bat, *.cmd, *.ps1)"), filterSpec: "*.py;*.bat;*.cmd;*.ps1" });
+        if (!r.cancelled) { inp.value = r.path; inp.oninput(); scheduleSave(t, 0); }
+      } catch (e) { toast(e.message, true); }
+    }));
+    box.querySelectorAll("[data-ldel]").forEach((btn) => (btn.onclick = () => {
+      const arr = list();
+      arr.splice(+btn.dataset.ldel, 1);
+      store(arr);
+      draw(); changed(); scheduleSave(t, 0);
+    }));
+    $("#f-ladd", box).onclick = () => {
+      const arr = list();
+      arr.push(empty());
+      store(arr);
+      draw(); changed();
+      $(`#f-lscript${arr.length - 1}`, box)?.focus();
+      scheduleSave(t, 0);
+    };
+  };
+  draw();
 }
 
 /* ------------------------------------------------------------------ FW build (ESP-IDF) */
@@ -2157,7 +2303,7 @@ function openBuildWindow(id, kind) {
   if (bw) clearTimeout(bw.timer);
   bw = { id, logSeen: 0, timer: null };
   modal(`
-    <div class="modal-h bw-h"><h3 id="bw-title">${kind === "backup" ? "Záloha" : scriptOnly(t) ? "Skript" : "Build"} „${esc(t.name)}“</h3><p id="bw-sub">Spouštím…</p></div>
+    <div class="modal-h bw-h"><h3 id="bw-title">${kind === "backup" ? "Záloha" : scriptOnly(t) ? scriptWord(t) : "Build"} „${esc(t.name)}“</h3><p id="bw-sub">Spouštím…</p></div>
     <div class="modal-b bw-b">
       <ol class="bsteps" id="bw-steps"></ol>
       <div class="bw-prog" id="bw-prog" hidden><span class="fill"></span></div>
@@ -2270,7 +2416,7 @@ function renderView(t) {
         ${mm ? `<button class="sync" id="btn-sync"><span class="fill"></span><span class="lbl">${icon(mm === "build" ? "gear" : "up")}<span id="sync-text">${mainLabel(t)}</span></span></button>` : extra ? `<div class="row big-extra">${extra}</div>` : ""}
         <div class="row">
           ${ready ? `<button class="plain small" id="btn-preview">Náhled změn</button>` : ""}
-          ${hasBuilds(t) && ready ? `<button class="plain small" id="btn-onlybuild">${scriptOnly(t) ? "Jen skript" : "Jen build"}</button><button class="plain small" id="btn-onlysync">Jen nahrát</button>` : ""}
+          ${hasBuilds(t) && ready ? `<button class="plain small" id="btn-onlybuild">${scriptOnly(t) ? (multiLight(t) ? "Jen skripty" : "Jen skript") : "Jen build"}</button><button class="plain small" id="btn-onlysync">Jen nahrát</button>` : ""}
           <button class="plain small" id="btn-log">${icon("log")}Log</button>
           <button class="plain small" id="btn-edit">${icon("gear")}Upravit kartu</button>
           <button class="plain small" id="btn-dup" title="Nová karta se stejným nastavením">${icon("copy")}Duplikovat</button>
@@ -2313,9 +2459,9 @@ function renderView(t) {
     </section>` : ""}
 
     ${hasBuilds(t) ? `<section class="sec">
-      <div class="sec-h"><h2>${scriptOnly(t) ? "Skript" : "Build"}</h2><span class="hint">${t.lastBuild ? lastBuildText(t) : ftp ? "pustí se před synchronizací v tomto pořadí" : "pustí se v tomto pořadí"}</span></div>
+      <div class="sec-h"><h2>${scriptOnly(t) ? scriptWord(t) : "Build"}</h2><span class="hint">${t.lastBuild ? lastBuildText(t) : multiLight(t) ? "při spuštění vybereš, který skript poběží" : ftp ? "pustí se před synchronizací v tomto pořadí" : "pustí se v tomto pořadí"}</span></div>
       <ol class="vbuilds">${cardBuilds(t).map((b) => `<li><span class="bn" translate="no">${esc(b.name)}</span><span class="note">${esc(b.config)}${b.crlf ? " · CRLF" : ""}${b.postBuild ? " · post-build" : ""}${b.postBuild ? ` · info: ${cardBuildInfo(t, b) ? "„" + esc(cardBuildInfo(t, b)) + "“" : "bez info"}` : ""}</span>
-        <span class="sw-line">${b.defines.map((d) => `<span class="chip ro on">${esc(d)}</span>`).join("") || `<span class="note">bez přepínačů</span>`}</span></li>`).join("")}${hasLight(t) ? `<li><span class="bn">${esc(lightName(t))}</span><span class="note">${scriptOnly(t) ? "" : "skript · "}${esc(lightKind(t))}${t.buildLight.args ? " · " + esc(t.buildLight.args) : ""}</span><span class="sw-line"><span class="note mono">${esc(t.buildLight.script)}</span></span></li>` : ""}</ol>
+        <span class="sw-line">${b.defines.map((d) => `<span class="chip ro on">${esc(d)}</span>`).join("") || `<span class="note">bez přepínačů</span>`}</span></li>`).join("")}${lights(t).map((l) => `<li><span class="bn">${esc(multiLight(t) ? scTitle(l) : scName(l))}</span><span class="note">${scriptOnly(t) ? "" : "skript · "}${multiLight(t) && (l.label || "").trim() ? esc(scName(l)) + " · " : ""}${esc(scKind(l))}${scArgs(l).length > 1 ? " · " + scArgs(l).map((a) => esc(argText(a))).join(" / ") : l.args ? " · " + esc(l.args) : ""}</span><span class="sw-line"><span class="note mono">${esc(l.script)}</span></span></li>`).join("")}</ol>
     </section>` : ""}
 
     ${(t.backups || []).length ? `<section class="sec">
@@ -2442,16 +2588,25 @@ async function confirmSync(t, mode) {
   const checks = doSync ? t.checklist || [] : [];
   const bl = doBuild ? cardBuilds(t) : [];
   const lt = doBuild && hasLight(t);
-  const title = lightLabel(t) && (mode === "buildsync" || (mode === "build" && !syncReady(t))) ? lightLabel(t) : (scriptOnly(t) ? { buildsync: "Skript + Synchronizovat", sync: "Synchronizovat", build: syncReady(t) ? "Jen skript" : "Spustit skript" } : { buildsync: "Build + Synchronizovat", sync: "Synchronizovat", build: syncReady(t) ? "Jen build" : "Build" })[mode];
+  // own scripts: with more of them the user picks ONE to run, a script with more variants of parameters asks for the
+  // variant (both remembered on the card); one script with one set of parameters = as before, no choice
+  const ls = doBuild ? lights(t) : [];
+  const lmulti = ls.length > 1;
+  let lsel = Math.max(0, ls.findIndex((l) => scKey(l) === t.scriptPick));
+  const lpick = doBuild && (lmulti || (ls.length === 1 && scArgs(ls[0]).length > 1));
+  const title = lightLabel(t) && (mode === "buildsync" || (mode === "build" && !syncReady(t))) ? lightLabel(t) : (scriptOnly(t) ? (multiLight(t) ? { buildsync: "Skripty + Synchronizovat", sync: "Synchronizovat", build: syncReady(t) ? "Jen skripty" : "Spustit skripty" } : { buildsync: "Skript + Synchronizovat", sync: "Synchronizovat", build: syncReady(t) ? "Jen skript" : "Spustit skript" }) : { buildsync: "Build + Synchronizovat", sync: "Synchronizovat", build: syncReady(t) ? "Jen build" : "Build" })[mode];
   modal(`
     <div class="modal-h"><h3>${title} „${esc(t.name)}“?</h3>
-      <p>${doSync ? `${esc(t.conn.user ? t.conn.user + "@" : "")}${esc(t.conn.host)} · ${PROTO[t.conn.protocol]}` : bl.length ? "Zkompiluje se, nic se nenahraje." : syncReady(t) ? "Spustí se skript, na server se nic nenahraje." : "Spustí se skript (Leonzilla sama nic nenahrává)."}</p></div>
+      <p>${doSync ? `${esc(t.conn.user ? t.conn.user + "@" : "")}${esc(t.conn.host)} · ${PROTO[t.conn.protocol]}` : bl.length ? "Zkompiluje se, nic se nenahraje." : lpick ? (syncReady(t) ? "Spustí se vybraný skript, na server se nic nenahraje." : "Spustí se vybraný skript (Leonzilla sama nic nenahrává).") : syncReady(t) ? "Spustí se skript, na server se nic nenahraje." : "Spustí se skript (Leonzilla sama nic nenahrává)."}</p></div>
     <div class="modal-b">
       ${bl.length || lt ? `<div class="bsteps-c">
-        <p class="cl-h">${!bl.length ? "Skript:" : bl.length + (lt ? 1 : 0) > 1 ? "Buildy v tomto pořadí:" : "Build:"}</p>
+        ${bl.length || !lpick ? `<p class="cl-h">${!bl.length ? "Skript:" : bl.length + (lt && !lpick ? 1 : 0) > 1 ? "Buildy v tomto pořadí:" : "Build:"}</p>
         <ol>${bl.map((b) => `<li><b translate="no">${esc(b.name)}</b> <span class="note">konfigurace ${esc(b.config)}${b.crlf ? " · CRLF" : ""}${b.postBuild ? " · post-build" : ""}</span>
           ${b.postBuild ? `<label class="binfo"><span>Info k verzi</span><input data-binfo="${esc(b.id)}" value="${esc(cardBuildInfo(t, b))}" maxlength="80" spellcheck="false" placeholder="prázdné = bez info" title="Karta si text zapamatuje pro příště"><button type="button" class="icon-btn small" data-binfo-reset="${esc(b.id)}" title="Vrátit výchozí text z nastavení buildu: ${esc(buildInfo(b) || "(bez info)")}">↺</button></label>` : ""}
-          <div class="sw-line">${b.defines.length ? b.defines.map((d) => `<span class="chip ro on">${esc(d)}</span>`).join("") : `<span class="note">žádný přepínač</span>`}</div></li>`).join("")}${lt ? `<li><b>${esc(lightName(t))}</b> <span class="note">${scriptOnly(t) ? "" : "skript · "}${esc(lightKind(t))}${t.buildLight.args ? " · " + esc(t.buildLight.args) : ""}</span></li>` : ""}</ol>
+          <div class="sw-line">${b.defines.length ? b.defines.map((d) => `<span class="chip ro on">${esc(d)}</span>`).join("") : `<span class="note">žádný přepínač</span>`}</div></li>`).join("")}${lt && !lpick ? `<li><b>${esc(lightName(t))}</b> <span class="note">${scriptOnly(t) ? "" : "skript · "}${esc(lightKind(t))}${lights(t)[0].args ? " · " + esc(lights(t)[0].args) : ""}</span></li>` : ""}</ol>` : ""}
+        ${lpick ? `<div id="m-lpick">${lmulti ? `<p class="cl-h">${bl.length ? "Potom skript – vyber, který poběží:" : "Vyber skript, který poběží:"}</p>
+          <div class="lpicks">${ls.map((l, i) => `<label class="check lp"><input type="radio" name="m-ls" value="${i}" ${i === lsel ? "checked" : ""}><span><b>${esc(scTitle(l))}</b> <span class="note">${(l.label || "").trim() ? esc(scName(l)) + " · " : ""}${esc(scKind(l))}${scArgs(l).length === 1 && l.args ? " · " + esc(l.args) : ""}</span></span></label>`).join("")}</div>` : ""}
+          <div id="m-largs"></div></div>` : ""}
         <div id="m-bwarn"></div>
         ${doSync ? `<p class="note">Synchronizace začne, až všechny buildy doběhnou bez chyby.</p>` : ""}
       </div>` : ""}
@@ -2474,6 +2629,18 @@ async function confirmSync(t, mode) {
         if (b && inp) { inp.value = buildInfo(b); inp.focus(); }
       }));
       const boxes = [...box.querySelectorAll("#m-checks input")];
+      // variants of the parameters of the chosen script (only when it has more of them)
+      const drawArgs = () => {
+        const el = $("#m-largs", box);
+        if (!el) return;
+        const l = ls[lsel], va = scArgs(l);
+        if (va.length < 2) { el.innerHTML = ""; return; }
+        const last = typeof l.lastArgs === "string" && va.includes(l.lastArgs.trim()) ? l.lastArgs.trim() : va[0];
+        el.innerHTML = `<p class="cl-h">${lmulti ? "Parametry:" : `Parametry skriptu ${esc(scName(l))}:`}</p>
+          <div class="lpicks">${va.map((a, k) => `<label class="check lp"><input type="radio" name="m-la" value="${k}" ${a === last ? "checked" : ""}><span>${a ? `<code translate="no">${esc(a)}</code>` : `<span class="note">bez parametrů</span>`}</span></label>`).join("")}</div>`;
+      };
+      box.querySelectorAll('input[name="m-ls"]').forEach((r) => (r.onchange = () => { lsel = +r.value; drawArgs(); }));
+      drawArgs();
       const refresh = () => {
         const done = boxes.every((b) => b.checked);
         ok.disabled = !done;
@@ -2484,7 +2651,7 @@ async function confirmSync(t, mode) {
       refresh();
       (boxes[0] || ok).focus();
       ok.onclick = () => {
-        if (!boxes.every((b) => b.checked)) return;
+        if (ok.disabled || !boxes.every((b) => b.checked)) return;
         const force = $("#m-force", box)?.checked || false;
         const buildInfoRun = {};
         box.querySelectorAll("[data-binfo]").forEach((inp) => {
@@ -2495,9 +2662,22 @@ async function confirmSync(t, mode) {
           t.buildInfo = { ...(t.buildInfo || {}) };
           if (b && v === buildInfo(b)) delete t.buildInfo[id]; else t.buildInfo[id] = v;
         });
+        let script = "", scriptArgs = null;
+        if (lpick) {
+          const l = ls[lsel], va = scArgs(l);
+          if (lmulti) {
+            script = scKey(l);
+            if (t.scriptPick !== script) { t.scriptPick = script; scheduleSave(t, 0); } // remembered for next time
+          }
+          if (va.length > 1) {
+            const k = +(box.querySelector('input[name="m-la"]:checked')?.value || 0);
+            scriptArgs = va[k] ?? va[0];
+            if (l.lastArgs !== scriptArgs) { l.lastArgs = scriptArgs; scheduleSave(t, 0); } // l = the card's own object
+          }
+        }
         if (Object.keys(buildInfoRun).length) scheduleSave(t, 0);
         close();
-        startJob(t, { force, build: doBuild, sync: doSync, buildInfo: buildInfoRun });
+        startJob(t, { force, build: doBuild, sync: doSync, buildInfo: buildInfoRun, script, scriptArgs });
       };
       if (bl.length) buildWarnings(bl).then((html) => { const el = $("#m-bwarn", box); if (el) el.innerHTML = html; });
     });
@@ -2539,7 +2719,7 @@ async function startJob(t, o) {
   }
   try {
     await flushSave(t);
-    await api("POST", `/api/tabs/${t.id}/sync`, { stopDropbox, preview, force: !!o.force, build: !!o.build, backup: !!o.backup, notes: o.notes || [], names: o.names || [], only: o.only || null, buildInfo: o.buildInfo || null, sync: o.sync !== false });
+    await api("POST", `/api/tabs/${t.id}/sync`, { stopDropbox, preview, force: !!o.force, build: !!o.build, backup: !!o.backup, notes: o.notes || [], names: o.names || [], only: o.only || null, buildInfo: o.buildInfo || null, script: o.script || "", scriptArgs: o.scriptArgs ?? null, sync: o.sync !== false });
     S.jobs[t.id] = o.backup ? "scanning" : o.build ? "building" : "connecting";
     if (o.build || o.backup) openBuildWindow(t.id, o.backup ? "backup" : "build");
     S.jobData[t.id] = null;
@@ -2608,7 +2788,11 @@ async function jobFinished(id, j, bg = false) {
   if (j.build) {
     const bad = (j.steps || []).find((x) => x.state === "failed" && x.name !== "Synchronizace");
     if (bad) return toast(`${name}: build selhal – ${bad.note || bad.name}`, true);
-    if (!j.syncAfter) return j.result === "ok" ? toast(`${name}: build hotový`) : toast(`${name}: build přerušen`, true);
+    if (!j.syncAfter) {
+      const so = t && scriptOnly(t), many = so && (j.steps || []).filter((x) => x.name !== "Synchronizace").length > 1;
+      if (j.result === "ok") return toast(`${name}: ${so ? (many ? "skripty doběhly bez chyby" : "skript doběhl bez chyby") : "build hotový"}`);
+      return toast(`${name}: ${so ? "skript přerušen" : "build přerušen"}`, true);
+    }
   }
   if (j.result === "ok") toast(`${name}: ${j.filesDone ? `nahráno ${fmtNum(j.filesDone)} souborů` : "vše aktuální"}`);
   else if (j.result === "cancelled") toast(`${name}: přerušeno`);
@@ -2629,7 +2813,7 @@ function updateSyncButton() {
   if (!busy) { txt.textContent = mainLabel(t); fill.style.width = "0"; btn.title = ""; return; }
   btn.title = "Probíhá – zastavíš to v panelu dole";
   if (j?.backup) { txt.textContent = "Záloha…"; btn.classList.add("indet"); return; }
-  if (j?.phase === "building") { const k = (j.steps || []).findIndex((x) => x.state === "running"); txt.textContent = scriptOnly(t) ? "Skript běží…" : `Build ${k + 1} / ${(j.steps || []).length}…`; btn.classList.add("indet"); return; }
+  if (j?.phase === "building") { const k = (j.steps || []).findIndex((x) => x.state === "running"); txt.textContent = scriptOnly(t) ? (multiLight(t) ? "Skripty běží…" : "Skript běží…") : `Build ${k + 1} / ${(j.steps || []).length}…`; btn.classList.add("indet"); return; }
   if (!j || j.phase === "connecting") { txt.textContent = "Připojuji…"; btn.classList.add("indet"); return; }
   if (j.phase === "scanning") { txt.textContent = `Porovnávám… ${fmtNum(j.scanFiles)}`; btn.classList.add("indet"); return; }
   if (j.preview) { txt.textContent = "Náhled…"; btn.classList.add("indet"); return; }
@@ -2773,12 +2957,121 @@ function browseRemote(t, pair, onPick) {
 
 /* ------------------------------------------------------------------ settings */
 
+// default folder of exports: Leonzilla_data\export
+const exportFolder = () => S.dataDir + (S.dataDir.includes("\\") ? "\\" : "/") + "export";
+
+/* Import (App settings → General): pick an export file, see what it contains, tick what to add. Import only ADDS –
+   cards get a new ID, groups / builds that already exist (same ID or name) are reused, nothing is overwritten,
+   config.json is backed up first (Leonzilla_data\backup). */
+async function openImport(path = "") {
+  if (S.dirty.size) return toast("Nejdřív ulož nebo zavři rozpracované úpravy karet", true);
+  let recent = [];
+  try { recent = (await api("GET", "/api/export")).files || []; } catch {}
+  modal(`
+    <div class="modal-h"><h3>Import nastavení</h3><p>Vyber soubor exportu Leonzilly. Nic stávajícího se nepřepíše.</p></div>
+    <div class="modal-b set-grid">
+      <div class="f"><label for="im-path">Soubor exportu</label>
+        <div class="path-field"><input id="im-path" value="${esc(path)}" placeholder="${esc(exportFolder())}…\\Leonzilla_export_….json" spellcheck="false">
+        ${S.canPickDir ? `<button id="im-pick" title="Vybrat soubor">${icon("file")}</button>` : ""}</div></div>
+      ${recent.length ? `<div class="f"><span class="lab">Poslední exporty v ${esc(exportFolder())}</span>
+        <ul class="glist im-recent">${recent.slice(0, 6).map((f) => `<li><button class="link" data-path="${esc(f.path)}" translate="no">${esc(f.name)}</button><span class="note">${esc(fmtWhen(f.at))}</span></li>`).join("")}</ul></div>` : ""}
+    </div>
+    <div class="modal-f"><button class="ghost" data-close>Zrušit</button><button class="primary" id="im-load">Načíst</button></div>`, (box) => {
+    const go = async (p) => {
+      p = (p || $("#im-path", box).value).trim();
+      if (!p) return toast("Vyber soubor exportu", true);
+      try { importChoose(p, await api("POST", "/api/import/preview", { path: p })); } catch (e) { toast(e.message, true); }
+    };
+    $("#im-load", box).onclick = () => go();
+    $("#im-path", box).onkeydown = (e) => { if (e.key === "Enter") go(); };
+    box.querySelectorAll("[data-path]").forEach((b) => (b.onclick = () => go(b.dataset.path)));
+    $("#im-pick", box)?.addEventListener("click", async () => {
+      try {
+        const r = await api("POST", "/api/pickfile", { title: tr("Vyber export Leonzilly"), start: $("#im-path", box).value || exportFolder(), filterName: tr("Export Leonzilly (*.json)"), filterSpec: "*.json" });
+        if (!r.cancelled) { $("#im-path", box).value = r.path; go(r.path); }
+      } catch (e) { toast(e.message, true); }
+    });
+  });
+}
+
+function importChoose(path, pv) {
+  const list = (key, items, kind) => key !== "tabs" && items.length && items.every((x) => x.exists)
+    ? `<p class="note im-all">${kind}: ${items.length === 1 ? "je tu už" : "všechny už tu jsou"} (${items.length}) – použijí se stávající, nic se nepřidá.</p>`
+    : items.length ? `<div class="f im-sec"><span class="lab">${kind} <span class="note">(${items.length})</span>
+      ${key === "tabs" ? `<button class="link" data-all="${key}" style="padding:0;margin-left:8px">vše / nic</button>` : ""}</span>
+      <div class="lpicks">${items.map((x) => `<label class="check lp${x.exists && key !== "tabs" ? " ex" : ""}"><input type="checkbox" data-k="${key}" value="${esc(x.id)}" ${key === "tabs" || !x.exists ? "checked" : "checked disabled"}><span><b translate="no">${esc(x.name)}</b>${x.note ? ` <span class="note" translate="no">${esc(x.note)}</span>` : ""}${x.exists ? ` <span class="note">${key === "tabs" ? "– karta s tímto názvem už je, přidá se jako „… (import)“" : "– už je, použije se stávající"}</span>` : ""}</span></label>`).join("")}</div></div>` : "";
+  modal(`
+    <div class="modal-h"><h3>Import nastavení</h3><p translate="no">${esc(path.split(/[\\/]/).pop())}</p><p>Leonzilla ${esc(pv.app || "?")} · ${esc(pv.pc || "")} · ${esc(fmtWhen(pv.created))}</p></div>
+    <div class="modal-b set-grid">
+      <p class="note" style="margin:0">Zaškrtnuté se <b>přidá</b>. Stávající karty, skupiny ani buildy se nemění; karty z importu jsou nové karty (první synchronizace porovná soubory znovu). Před importem se uloží záloha <code>config.json</code>.</p>
+      ${list("tabs", pv.tabs || [], "Karty")}
+      ${list("groups", pv.groups || [], "Skupiny")}
+      ${list("builds", pv.builds || [], "Buildy (RAD Studio)")}
+      ${pv.passwords ? `<div class="f"><label for="im-pw">Heslo k exportu <span class="note">– soubor obsahuje hesla k serverům; prázdné = karty se přidají bez hesel</span></label>
+        <input type="password" id="im-pw" autocomplete="off" style="max-width:320px"></div>` : `<p class="note" style="margin:0">Soubor neobsahuje hesla k serverům – po importu je u karet doplň.</p>`}
+      <label class="check"><input type="checkbox" id="im-set">Převzít i obecné nastavení (vzhled, jazyk, souběžné nahrávání, kompilátor) – přepíše současné</label>
+    </div>
+    <div class="modal-f"><button class="ghost" id="im-back">Zpět</button><button class="primary" id="im-go">Importovat</button></div>`, (box, close) => {
+    const picked = (k) => [...box.querySelectorAll(`input[data-k="${k}"]:checked:not(:disabled)`)].map((x) => x.value);
+    const count = () => {
+      const n = picked("tabs").length + picked("groups").length + picked("builds").length + ($("#im-set", box).checked ? 1 : 0);
+      $("#im-go", box).disabled = !n;
+      $("#im-go", box).textContent = picked("tabs").length ? `Importovat (${plural(picked("tabs").length, "karta", "karty", "karet")})` : "Importovat";
+    };
+    box.querySelectorAll("input[type=checkbox]").forEach((c) => (c.onchange = count));
+    box.querySelectorAll("[data-all]").forEach((b) => (b.onclick = () => {
+      const cs = [...box.querySelectorAll(`input[data-k="${b.dataset.all}"]`)], on = !cs.every((c) => c.checked);
+      cs.forEach((c) => (c.checked = on)); count();
+    }));
+    count();
+    $("#im-back", box).onclick = () => openImport(path);
+    $("#im-go", box).onclick = async () => {
+      const btn = $("#im-go", box), withSettings = $("#im-set", box).checked;
+      btn.disabled = true;
+      try {
+        const r = await api("POST", "/api/import", { path, password: $("#im-pw", box)?.value || "", tabs: picked("tabs"), groups: picked("groups"), builds: picked("builds"), settings: withSettings });
+        close();
+        if (withSettings) { location.reload(); return; }
+        await load();
+        toast(`Importováno: ${plural(r.tabs, "karta", "karty", "karet")}, ${plural(r.groups, "skupina", "skupiny", "skupin")}, ${plural(r.builds, "build", "buildy", "buildů")}${r.noPass ? ` · ${plural(r.noPass, "karta", "karty", "karet")} bez hesla` : ""}`);
+      } catch (e) { btn.disabled = false; toast(e.message, true); }
+    };
+  });
+}
+
+// tabs of App settings: a tab with something set is highlighted like in the card settings
+const SET_TABS = [
+  ["general", "Obecné"],
+  ["groups", "Skupiny"],
+  ["builds", "Buildy (RAD Studio)"],
+];
+function setTabNote(k) {
+  const s = S.settings;
+  switch (k) {
+    case "general": return "";
+    case "groups": return groups().length ? plural(groups().length, "skupina", "skupiny", "skupin") : "";
+    case "builds": return builds().length ? plural(builds().length, "build", "buildy", "buildů") : "";
+  }
+  return "";
+}
+function setTabsHtml(active) {
+  return SET_TABS.map(([k, name]) => {
+    const note = setTabNote(k);
+    const sub = k === "general" ? (S.settings.master ? "hlavní heslo nastavené" : "vzhled, jazyk, heslo, více PC") : note || "–";
+    return `<button type="button" class="etab${note ? " set" : ""}${k === "general" ? " info" : ""}${k === active ? " on" : ""}" data-etab="${k}" role="tab" aria-selected="${k === active}"><span class="etab-dot" aria-hidden="true"></span><span class="etab-name">${name}</span><span class="etab-note">${esc(sub)}</span></button>`;
+  }).join("");
+}
+
 function openSettings(focus = false) {
   const focusGroups = focus === true || focus === "groups";
   const s = S.settings;
+  // App settings in tabs like the card settings; groups / builds open their tab directly
+  const stab = (S.setTab = focusGroups ? "groups" : focus === "builds" ? "builds" : SET_TABS.some(([k]) => k === S.setTab) ? S.setTab : "general");
   modal(`
     <div class="modal-h"><h3>Nastavení aplikace</h3><p>Leonzilla ${esc(S.version)} · <button class="link" id="s-about" style="padding:0">O aplikaci</button> · data: <span style="font-family:var(--mono);font-size:12px" translate="no">${esc(S.dataDir)}</span></p></div>
-    <div class="modal-b set-grid">
+    <div class="modal-b">
+      <nav class="etabs stabs" id="stabs" role="tablist" aria-label="Nastavení aplikace">${setTabsHtml(stab)}</nav>
+      <div class="set-grid stab-pane" data-spane="general"${stab === "general" ? "" : " hidden"}>
       <div class="f"><span class="lab">Vzhled</span>
         <div class="seg" id="s-theme">${[["auto", "Podle Windows"], ["light", "Světlý"], ["dark", "Tmavý"]].map(([k, v]) => `<button data-v="${k}" aria-pressed="${s.theme === k}">${v}</button>`).join("")}</div></div>
       <div class="f"><span class="lab">Jazyk · Language</span>
@@ -2798,15 +3091,28 @@ function openSettings(focus = false) {
           <input type="password" id="s-new2" placeholder="Znovu nové" style="flex:1;min-width:160px">
           <button class="ghost" id="s-master">${s.master ? "Změnit" : "Nastavit"}</button>
         </div></div>
+      <div class="f" id="s-xport"><span class="lab">Export / import nastavení</span>
+        <span class="note">Jeden soubor se vším – karty, skupiny, buildy a obecné nastavení – pro zálohu nebo přenos do jiné instalace. Import jen přidá, co vybereš: nic stávajícího nepřepíše a předtím zazálohuje <code>config.json</code>.</span>
+        <label for="s-xdir" style="margin-top:6px">Složka pro export</label>
+        <div class="path-field"><input id="s-xdir" value="" placeholder="${esc(exportFolder())}" spellcheck="false">
+          ${S.canPickDir ? `<button id="s-xdir-pick" title="Vybrat složku">${icon("folder")}</button>` : ""}</div>
+        <label class="check" style="margin-top:6px"><input type="checkbox" id="s-xpw">Včetně hesel k serverům – v souboru budou zašifrovaná heslem k exportu</label>
+        <div class="xpw" id="s-xpwbox" hidden><input type="password" id="s-xp1" placeholder="Heslo k exportu" autocomplete="new-password"><input type="password" id="s-xp2" placeholder="Znovu heslo k exportu" autocomplete="new-password"></div>
+        <div class="row-btns" style="margin-top:6px"><button class="ghost" id="s-xgo">${icon("up")}Exportovat</button><button class="ghost" id="s-imp">${icon("file")}Importovat…</button></div>
+        <span class="note" id="s-xnote"></span></div>
       <div class="f" id="s-pcs"><span class="lab">Více počítačů (Dropbox)</span>
         <span class="note"><b>Společné pro všechna PC</b> (<code>Leonzilla_data\\config.json</code>): karty a jejich pořadí, skupiny, servery a hesla, buildy a kompilátor, Dropbox u karet, jazyk, vzhled, souběžné nahrávání, hlavní heslo; také stav nahrání a logy.<br><b>Jen tento PC</b>: sbalené skupiny, otevřené záložky a poslední karta (<code>Leonzilla_data\\ui\\${esc(S.pc || "PC")}.json</code>), velikost a poloha okna (<code>%LOCALAPPDATA%\\Leonzilla</code>) a spouštění s Windows.</span></div>
+      </div>
+      <div class="set-grid stab-pane" data-spane="groups"${stab === "groups" ? "" : " hidden"}>
       <div class="f" id="s-groups-box"><span class="lab">Skupiny karet</span>
         <span class="note">V Přehledu jsou skupiny pod sebou v tomto pořadí. Dlaždice mezi nimi přetáhneš myší, nebo skupinu vybereš při úpravě karty.</span>
         <ul class="glist" id="s-groups"></ul>
         <form class="gadd" id="s-gadd"><input id="s-gname" placeholder="Název nové skupiny, např. Klienti" maxlength="60"><button class="ghost">${icon("plus")}Přidat skupinu</button></form>
       </div>
+      </div>
+      <div class="set-grid stab-pane" data-spane="builds"${stab === "builds" ? "" : " hidden"}>
       <div class="f" id="s-builds-box"><span class="lab">Buildy (RAD Studio / TMS WEB Core)</span>
-        <span class="note">Build nastavíš jednou a v kartách ho jen vybereš (Upravit kartu → Build před synchronizací).</span>
+        <span class="note">Build nastavíš jednou a v kartách ho jen vybereš (Upravit kartu → záložka Build (RAD Studio)).</span>
         <ul class="glist blist" id="s-builds"></ul>
         <div><button class="ghost" id="s-badd">${icon("plus")}Přidat build</button></div>
         <label for="s-compiler" style="margin-top:8px">Kompilátor TMSWebCompiler.exe</label>
@@ -2820,9 +3126,25 @@ function openSettings(focus = false) {
         <span class="note">Info k verzi dostane post-build vždy v proměnné LEONZILLA_VERSION_INFO. Když ho skript projektu čte pod jiným názvem, napiš ho sem – nastaví se obě.</span>
         <span class="note" id="s-compiler-note">${s.compilerFound ? `Použije se: ${esc(s.compilerFound)}${s.compiler ? "" : " (nalezen automaticky)"}` : "Kompilátor nebyl nalezen – bez něj build nepůjde. Na PC bez TMS WEB Core jde jen synchronizace."}</span>
       </div>
+      </div>
     </div>
     <div class="modal-f"><button class="primary" data-close>Hotovo</button></div>`, (box) => {
     $("#s-about", box).onclick = () => openAbout();
+    $("#stabs", box).onclick = (e) => {
+      const b = e.target.closest("[data-etab]");
+      if (!b) return;
+      S.setTab = b.dataset.etab;
+      box.querySelectorAll(".stab-pane").forEach((p) => (p.hidden = p.dataset.spane !== S.setTab));
+      $("#stabs", box).innerHTML = setTabsHtml(S.setTab);
+    };
+    $("#stabs", box).onkeydown = (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      const ks = SET_TABS.map(([k]) => k), i = ks.indexOf(S.setTab);
+      const k = ks[(i + (e.key === "ArrowRight" ? 1 : ks.length - 1)) % ks.length];
+      $("#stabs", box).querySelector(`[data-etab="${k}"]`)?.click();
+      $("#stabs", box).querySelector(`[data-etab="${k}"]`)?.focus();
+    };
+    const refreshSetTabs = () => { const n = $("#stabs", box); if (n) n.innerHTML = setTabsHtml(S.setTab); };
     box.querySelectorAll("#s-lang button").forEach((b) => b.onclick = async () => {
       if ((s.langSetting || "") === b.dataset.v) return;
       try { await api("POST", "/api/settings", { theme: s.theme, workers: s.workers, lang: b.dataset.v }); location.reload(); }
@@ -2867,6 +3189,7 @@ function openSettings(focus = false) {
         li.querySelector("[data-up]").onclick = () => { const list = groups().map((g) => ({ ...g })); list.splice(i - 1, 0, list.splice(i, 1)[0]); saveGroups(list); };
         li.querySelector("[data-del]").onclick = () => saveGroups(groups().filter((_, k) => k !== i));
       });
+      refreshSetTabs();
     };
     drawGroups();
     $("#s-gadd", box).onsubmit = (e) => {
@@ -2877,7 +3200,6 @@ function openSettings(focus = false) {
       saveGroups([...groups(), { id: "", name }]);
     };
     if (focusGroups) setTimeout(() => $("#s-gname", box)?.focus(), 30);
-    if (focus === "builds") setTimeout(() => $("#s-builds-box", box)?.scrollIntoView({ block: "start" }), 30);
     const drawBuilds = () => {
       const ul = $("#s-builds", box);
       const bl = builds();
@@ -2888,6 +3210,7 @@ function openSettings(focus = false) {
           <button class="ghost small" data-edit>Upravit</button></li>`;
       }).join("") : `<li class="note">Zatím žádný build.</li>`;
       ul.querySelectorAll("[data-edit]").forEach((btn) => (btn.onclick = () => openBuildEditor(builds()[+btn.closest("li").dataset.i])));
+      refreshSetTabs();
     };
     drawBuilds();
     $("#s-badd", box).onclick = () => openBuildEditor(null);
@@ -2921,6 +3244,28 @@ function openSettings(focus = false) {
       } catch (e) { toast(e.message, true); }
     };
     $("#s-workers", box).onchange = (e) => { s.workers = +e.target.value; api("POST", "/api/settings", { theme: s.theme, workers: s.workers }).catch((er) => toast(er.message, true)); };
+    // export / import of the whole configuration
+    $("#s-xpw", box).onchange = (e) => { $("#s-xpwbox", box).hidden = !e.target.checked; if (e.target.checked) $("#s-xp1", box).focus(); };
+    $("#s-xdir-pick", box)?.addEventListener("click", async () => {
+      try {
+        const r = await api("POST", "/api/pickdir", { title: tr("Vyber složku pro export"), start: $("#s-xdir", box).value || exportFolder() });
+        if (!r.cancelled) $("#s-xdir", box).value = r.path;
+      } catch (e) { toast(e.message, true); }
+    });
+    $("#s-xgo", box).onclick = async () => {
+      const withPw = $("#s-xpw", box).checked, p1 = $("#s-xp1", box).value, p2 = $("#s-xp2", box).value;
+      if (withPw && p1.length < 4) return toast("Heslo k exportu musí mít aspoň 4 znaky", true);
+      if (withPw && p1 !== p2) return toast("Hesla k exportu se neshodují", true);
+      try {
+        const r = await api("POST", "/api/export", { folder: $("#s-xdir", box).value.trim(), passwords: withPw, password: withPw ? p1 : "" });
+        const note = $("#s-xnote", box);
+        note.innerHTML = `<span>Uloženo:</span> <span class="mono" translate="no">${esc(r.path)}</span><br><span>${plural(r.tabs, "karta", "karty", "karet")}</span> · <span>${plural(r.groups, "skupina", "skupiny", "skupin")}</span> · <span>${plural(r.builds, "build", "buildy", "buildů")}</span> · <span>${r.passwords ? "s hesly" : "bez hesel"}</span> · <button class="link" id="s-xopen" style="padding:0">Otevřít složku</button>`;
+        $("#s-xopen", box).onclick = () => api("POST", "/api/openfolder", { path: r.folder }).catch((er) => toast(er.message, true));
+        $("#s-xp1", box).value = $("#s-xp2", box).value = "";
+        toast("Export uložen");
+      } catch (e) { toast(e.message, true); }
+    };
+    $("#s-imp", box).onclick = () => openImport();
     $("#s-master", box).onclick = async () => {
       const nw = $("#s-new", box).value, nw2 = $("#s-new2", box).value;
       if (nw !== nw2) return toast("Nová hesla se neshodují", true);
