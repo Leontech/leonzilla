@@ -62,6 +62,7 @@ function helpHTMLen() {
           <div><span class="hp-b gt">${icon("branch")}GitHub</span><p>Goes through the card's repositories, shows the changes and commits and pushes.</p></div>
           <div><span class="hp-b gh">${icon("copy")}Duplicate</span><p>A new card with the same settings, right after the original.</p></div>
         </div>
+        <p class="hp-tip">${icon("grid")}<span>On the tile of a card that <b>synchronizes to a server</b>, <i>Check</i> and <i>Synchronize</i> are the main buttons; backup, GitHub or FW are small chips below them. On a card <b>without synchronization</b> all actions (script, FW, Monitor, Back up, GitHub) are equal – buttons of the same size, two side by side; a button with a long label or an odd last one takes the whole row.</span></p>
       </section>
 
       <section id="hp-patterns">

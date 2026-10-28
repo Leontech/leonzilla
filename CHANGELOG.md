@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.11.18 – 2026-10-28
+
+- **Balanced buttons on the tiles.** A card that synchronizes to a server keeps *Check* + *Synchronize* as the main buttons with small chips for backup, GitHub or FW. A card **without** synchronization has no single main action any more: its own script, FW build, Monitor, Back up and GitHub are buttons of the same size, two per row – a button with a long label, or an odd last one, takes the whole row. Before, the first action was big and the others were tiny chips (e.g. a big script button next to a tiny FW button).
+- Only the layout of the tiles changed – no settings and no cards are touched.
+
 ## 1.11.17 – 2026-10-27
 
 **Own scripts**

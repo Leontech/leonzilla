@@ -827,3 +827,8 @@ button.mon-btn.live { box-shadow: 0 0 0 3px color-mix(in srgb, var(--fw) 35%, tr
 .im-sec .lpicks { max-height: 300px; overflow-y: auto; padding-right: 4px; }
 .check.lp.ex { opacity: .7; }
 .im-all { margin: 0; }
+/* tile without synchronization: all actions the same size, two per row (an odd last one takes the whole row) */
+.tile-actions.tgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.tile-actions.tgrid > button { width: 100%; min-width: 0; height: 38px; border-radius: 9px; justify-content: center; overflow: hidden; }
+.tile-actions.tgrid > .full { grid-column: 1 / -1; display: flex; }
+.tile-actions.tgrid > .full > button { flex: 1; width: 100%; min-width: 0; height: 38px; border-radius: 9px; justify-content: center; }

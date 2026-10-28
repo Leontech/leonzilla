@@ -1149,12 +1149,16 @@ function cardKinds(t) {
   return k.join(" · ") || "Karta není nastavená";
 }
 
+/* Buttons of a tile: a card that synchronizes keeps one main row (Zkontrolovat + Build / Synchronizovat) and small chips
+   (backup, GitHub, FW …). A card without synchronization has no "main" action – its actions (own script / build, FW,
+   monitor, backup, GitHub) are peers: the same size in a grid of two columns, an odd last one spans the whole width. */
 function tileInner(t) {
   const c = t.conn;
   const on = t.pairs.filter((p) => p.enabled && p.local);
   const targets = on.map((p) => esc(p.remote || "/")).join(", ");
   const ftp = syncReady(t), mm = mainMode(t);
-  const xb = (tiny) => `${hasBackups(t) ? `<button class="backup-btn${tiny ? " tiny" : ""}" data-act="backup" title="${esc(lastBackupText(t))}"${running(t.id) ? " disabled" : ""}>${icon("archive")}Zálohovat</button>` : ""}${hasGit(t) ? `<button class="git-btn${tiny ? " tiny" : ""}" data-act="git" title="${esc(lastGitText(t))}">${icon("branch")}GitHub</button>` : ""}${hasFw(t) ? `<button class="fw-btn${tiny ? " tiny" : ""}${S.fwRunning?.[t.id] && S.fwRunning[t.id] !== "monitor" ? " live" : ""}" data-act="fw" title="FW build / nahrání (ESP-IDF)">${icon("chip")}FW</button>` : ""}${hasMon(t) ? `<button class="mon-btn${tiny ? " tiny" : ""}${S.fwRunning?.[t.id] === "monitor" ? " live" : ""}" data-act="mon" title="Monitor – sériová konzole zařízení">${icon("log")}Monitor</button>` : ""}`;
+  const xbl = (tiny) => [`${hasBackups(t) ? `<button class="backup-btn${tiny ? " tiny" : ""}" data-act="backup" title="${esc(lastBackupText(t))}"${running(t.id) ? " disabled" : ""}>${icon("archive")}Zálohovat</button>` : ""}`, `${hasGit(t) ? `<button class="git-btn${tiny ? " tiny" : ""}" data-act="git" title="${esc(lastGitText(t))}">${icon("branch")}GitHub</button>` : ""}`, `${hasFw(t) ? `<button class="fw-btn${tiny ? " tiny" : ""}${S.fwRunning?.[t.id] && S.fwRunning[t.id] !== "monitor" ? " live" : ""}" data-act="fw" title="FW build / nahrání (ESP-IDF)">${icon("chip")}FW</button>` : ""}`, `${hasMon(t) ? `<button class="mon-btn${tiny ? " tiny" : ""}${S.fwRunning?.[t.id] === "monitor" ? " live" : ""}" data-act="mon" title="Monitor – sériová konzole zařízení">${icon("log")}Monitor</button>` : ""}`].filter(Boolean);
+  const xb = (tiny) => xbl(tiny).join("");
   if (!ftp) return `
     <header>
       <span class="dot"></span>
@@ -1165,11 +1169,9 @@ function tileInner(t) {
     ${syncSet(t) ? `<p class="last err">Synchronizace nedokončená – ${t.conn.host ? "chybí složka" : "chybí server"}</p>` : ""}
     ${hasBuilds(t) ? `<p class="tbuild">${icon("gear")}${scriptOnly(t) ? scriptWord(t) : "Build"}: ${buildNames(t).map(esc).join(" → ")}</p>` : ""}
     <div class="st">${tileStatus(t)}</div>
-    <div class="tile-actions">
-      ${mm ? tileSyncButton(t) : ""}
-      ${cardUnset(t) ? `<button class="ghost" data-act="open">${icon("gear")}Nastavit kartu</button>` : !mm ? xb(false) : ""}
-    </div>
-    ${mm && (hasBackups(t) || hasGit(t) || hasFw(t) || hasMon(t)) ? `<div class="tile-more">${xb(true)}</div>` : ""}`;
+    <div class="tile-actions${cardUnset(t) ? "" : " tgrid"}">
+      ${cardUnset(t) ? `<button class="ghost" data-act="open">${icon("gear")}Nastavit kartu</button>` : tileGrid([...(mm ? [{ html: tileSyncButton(t), wide: mainLabel(t).length > 18 }] : []), ...xbl(false).map((html) => ({ html }))])}
+    </div>`;
   return `
     <header>
       <span class="dot"></span>
@@ -1188,6 +1190,17 @@ function tileInner(t) {
     ${hasBuilds(t) || hasBackups(t) || hasGit(t) || hasFw(t) || hasMon(t) ? `<div class="tile-more">
       ${xb(true)}${hasBackups(t) || hasGit(t) || hasFw(t) || hasMon(t) ? `<span class="spacer"></span>` : ""}
       ${hasBuilds(t) ? `<button class="link" data-act="onlybuild">${scriptOnly(t) ? (multiLight(t) ? "Jen skripty" : "Jen skript") : "Jen build"}</button><button class="link" data-act="onlysync">Jen nahrát</button>` : ""}</div>` : ""}`;
+}
+
+// two buttons per row; a button with a long label, or one that would be alone in its row, takes the whole row
+function tileGrid(items) {
+  let col = 0;
+  items.forEach((it, i) => {
+    if (it.wide) { if (col === 1) items[i - 1].full = true; it.full = true; col = 0; }
+    else col = col ? 0 : 1;
+  });
+  if (col === 1) items[items.length - 1].full = true;
+  return items.map((it) => (it.full ? `<div class="full">${it.html}</div>` : it.html)).join("");
 }
 
 function tileSyncButton(t) {

@@ -63,6 +63,7 @@ function helpHTMLcs() {
           <div><span class="hp-b gt">${icon("branch")}GitHub</span><p>Projde repozitáře karty, ukáže změny a udělá commit a push.</p></div>
           <div><span class="hp-b gh">${icon("copy")}Duplikovat</span><p>Nová karta se stejným nastavením hned za originálem.</p></div>
         </div>
+        <p class="hp-tip">${icon("grid")}<span>Na dlaždici karty, která <b>synchronizuje na server</b>, je hlavní <i>Zkontrolovat</i> a <i>Synchronizovat</i>; zálohování, GitHub nebo FW jsou malé čipy pod nimi. U karty <b>bez synchronizace</b> jsou si všechny akce (skript, FW, Monitor, Zálohovat, GitHub) rovné – stejně velká tlačítka, dvě vedle sebe; tlačítko s dlouhým popiskem nebo poslední liché zabere celý řádek.</span></p>
       </section>
 
       <section id="hp-patterns">
