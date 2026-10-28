@@ -832,3 +832,12 @@ button.mon-btn.live { box-shadow: 0 0 0 3px color-mix(in srgb, var(--fw) 35%, tr
 .tile-actions.tgrid > button { width: 100%; min-width: 0; height: 38px; border-radius: 9px; justify-content: center; overflow: hidden; }
 .tile-actions.tgrid > .full { grid-column: 1 / -1; display: flex; }
 .tile-actions.tgrid > .full > button { flex: 1; width: 100%; min-width: 0; height: 38px; border-radius: 9px; justify-content: center; }
+/* switches in the build confirmation: click = strike out / add only for this run */
+.chip.tog { cursor: pointer; color: var(--ink); }
+.chip.tog:hover { border-color: var(--line-strong); }
+.chip.tog.off { text-decoration: line-through; opacity: .55; background: transparent; border-style: dashed; }
+.chip.tog.tmp { border-style: dashed; border-color: var(--amber-deep); background: color-mix(in srgb, var(--amber) 16%, var(--surface)); }
+.bdefs .chip-add button { height: 24px; }
+.bdef-in { height: 24px; width: 190px; padding: 0 7px; border-radius: 6px; border: 1px solid var(--focus); background: var(--surface); color: var(--ink); font: 12px var(--mono); }
+.bdef-note { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--warn); }
+.bdef-note .link { font-size: 12px; padding: 0; }

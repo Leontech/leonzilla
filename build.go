@@ -477,6 +477,46 @@ var (
 	reLocked   = regexp.MustCompile(`(?i)cannot (?:create|open|write) file\s+"([^"]+)".*(?:another process|jiný proces|being used|využívá)`)
 )
 
+var reSwitchName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
+
+// cleanDefines keeps valid compiler switch names (letters, digits, _), without duplicates, at most 100.
+func cleanDefines(in []string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, d := range in {
+		d = strings.TrimSpace(d)
+		if k := strings.ToUpper(d); reSwitchName.MatchString(d) && !seen[k] && len(out) < 100 {
+			seen[k] = true
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// diffDefines describes the change of switches for the log: "−REMOVED +ADDED" ("" = no change).
+func diffDefines(old, cur []string) string {
+	has := func(l []string, d string) bool {
+		for _, x := range l {
+			if strings.EqualFold(x, d) {
+				return true
+			}
+		}
+		return false
+	}
+	var parts []string
+	for _, d := range old {
+		if !has(cur, d) {
+			parts = append(parts, "−"+d)
+		}
+	}
+	for _, d := range cur {
+		if !has(old, d) {
+			parts = append(parts, "+"+d)
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
 // splitArgs splits extra arguments, honoring "double quotes".
 func splitArgs(s string) []string {
 	var out []string
@@ -526,12 +566,13 @@ func (j *Job) setStep(i int, state, note string) {
 }
 
 type buildPlan struct {
-	b     *Build
-	light *BuildLight // one of the card's own scripts ("Build light") instead of b
-	dproj *DprojInfo
-	post  string // expanded post-build command
-	info  string // version info for the post-build (environment variable)
-	steps []int  // indexes into Job.Steps: crlf, compile, post, extra (-1 = not used)
+	b       *Build
+	light   *BuildLight // one of the card's own scripts ("Build light") instead of b
+	dproj   *DprojInfo
+	post    string // expanded post-build command
+	info    string // version info for the post-build (environment variable)
+	tmpDefs string // switches changed for this run only, e.g. "−A +B" ("" = as set in the build)
+	steps   []int  // indexes into Job.Steps: crlf, compile, post, extra (-1 = not used)
 }
 
 // prepareBuilds resolves the builds of a card and creates the step list.
@@ -557,6 +598,10 @@ func (r *Runner) prepareBuilds(j *Job, tab *Tab) ([]*buildPlan, error) {
 		}
 		if v, ok := j.buildInfo[b.ID]; ok { // changed in the confirmation for this run only
 			p.info = cleanVersionInfo(v)
+		}
+		if v, ok := j.buildDefs[b.ID]; ok { // switches struck out / added in the confirmation – this run only, never saved
+			p.tmpDefs = diffDefines(b.Defines, cleanDefines(v))
+			b.Defines = cleanDefines(v) // b is a copy of the build setting
 		}
 		add := func(slot int, name string) {
 			p.steps[slot] = len(j.Steps)
@@ -724,6 +769,9 @@ func (r *Runner) runBuilds(ctx context.Context, j *Job, plans []*buildPlan) (str
 		args := []string{"/ParseDprojFile", "/ProjectFile:" + b.Project, "/Config:" + b.Config, "/Platform:" + b.Platform,
 			"/Defines:" + strings.Join(defs, ";")}
 		args = append(args, splitArgs(b.ExtraArgs)...)
+		if p.tmpDefs != "" {
+			j.logf("warn", T("Přepínače jen pro tento build (nastavení buildu se nemění): %s"), p.tmpDefs)
+		}
 		j.logf("info", T("Přepínače: %s"), strings.Join(defs, ", "))
 		j.logf("info", "> %s %s", filepath.Base(compiler), strings.Join(args, " "))
 		var code, errLines int

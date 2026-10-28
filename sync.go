@@ -89,6 +89,7 @@ type Job struct {
 	notes     map[*BackupPair]string // backup: note per zip
 	names     map[*BackupPair]string // backup: own zip name (without .zip)
 	buildInfo map[string]string      // build ID → "Info k verzi" changed in the confirmation (this run only)
+	buildDefs map[string][]string    // build ID → switches changed in the confirmation (this run only, never saved)
 	script    string                 // own script chosen in the confirmation (BuildLight.key()); "" = the only one
 	scriptArg *string                // its parameters chosen in the confirmation; nil = the first variant
 }
@@ -242,16 +243,17 @@ func stepsCopy(s []*Step) []Step {
 
 type StartOpts struct {
 	Preview, Force bool
-	Build          bool              // run the card's builds first
-	Backup         bool              // zip backup of the card's backup pairs (nothing else)
-	Notes          []string          // backup: note for each backup of the card (same order as Tab.Backups) → prefix_note_date.zip
-	Only           []int             // backup: run only these backups (indexes into Tab.Backups); nil = all enabled
-	Names          []string          // backup: own zip name per backup (same order as Tab.Backups), e.g. "fw-160" → fw-160.zip
-	BuildInfo      map[string]string // build ID → "Info k verzi" for this run (overrides the build setting)
-	Script         string            // own script chosen for this run (BuildLight.key()); "" = the card has only one
-	ScriptArgs     *string           // parameters chosen for it (one of its variants); nil = the first variant
-	Sync           bool              // synchronize (always true unless "only build")
-	StopDropbox    bool              // stop Dropbox during the builds for this run (chosen in the Dropbox check)
+	Build          bool                // run the card's builds first
+	Backup         bool                // zip backup of the card's backup pairs (nothing else)
+	Notes          []string            // backup: note for each backup of the card (same order as Tab.Backups) → prefix_note_date.zip
+	Only           []int               // backup: run only these backups (indexes into Tab.Backups); nil = all enabled
+	Names          []string            // backup: own zip name per backup (same order as Tab.Backups), e.g. "fw-160" → fw-160.zip
+	BuildInfo      map[string]string   // build ID → "Info k verzi" for this run (overrides the build setting)
+	BuildDefines   map[string][]string // build ID → switches for this run only (struck out / added in the confirmation)
+	Script         string              // own script chosen for this run (BuildLight.key()); "" = the card has only one
+	ScriptArgs     *string             // parameters chosen for it (one of its variants); nil = the first variant
+	Sync           bool                // synchronize (always true unless "only build")
+	StopDropbox    bool                // stop Dropbox during the builds for this run (chosen in the Dropbox check)
 }
 
 func newRunner(s *Store) *Runner { return &Runner{store: s, jobs: map[string]*Job{}} }
@@ -302,6 +304,7 @@ func (r *Runner) Start(tabID string, o StartOpts) (*Job, error) {
 	}
 	if o.Build {
 		j.buildInfo = o.BuildInfo
+		j.buildDefs = o.BuildDefines
 		j.script, j.scriptArg = o.Script, o.ScriptArgs
 		plans, err := r.prepareBuilds(j, tab)
 		if err != nil {

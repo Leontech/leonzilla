@@ -751,13 +751,14 @@ func (a *API) hSync(w http.ResponseWriter, r *http.Request) {
 		Only                          []int
 		Names                         []string
 		BuildInfo                     map[string]string
-		Script                        string  // own script chosen in the confirmation (BuildLight.key())
-		ScriptArgs                    *string // its parameters chosen in the confirmation
+		BuildDefines                  map[string][]string // switches changed in the confirmation, this run only
+		Script                        string              // own script chosen in the confirmation (BuildLight.key())
+		ScriptArgs                    *string             // its parameters chosen in the confirmation
 	}
 	_ = readJSON(r, &req)
 	id := r.PathValue("id")
 	a.dropBrowse(id)
-	o := StartOpts{Preview: req.Preview, Force: req.Force, Build: req.Build, Backup: req.Backup, Notes: req.Notes, Only: req.Only, Names: req.Names, BuildInfo: req.BuildInfo, Script: req.Script, ScriptArgs: req.ScriptArgs, Sync: req.Sync == nil || *req.Sync, StopDropbox: req.StopDropbox}
+	o := StartOpts{Preview: req.Preview, Force: req.Force, Build: req.Build, Backup: req.Backup, Notes: req.Notes, Only: req.Only, Names: req.Names, BuildInfo: req.BuildInfo, BuildDefines: req.BuildDefines, Script: req.Script, ScriptArgs: req.ScriptArgs, Sync: req.Sync == nil || *req.Sync, StopDropbox: req.StopDropbox}
 	if _, err := a.runner.Start(id, o); err != nil {
 		writeErr(w, 409, err)
 		return

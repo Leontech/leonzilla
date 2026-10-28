@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.11.19 – 2026-10-28
+
+- **Switches for one build only.** In the confirmation of a RAD Studio build, click a switch to strike it out for this run (click again to put it back), or add another one with *+ switch* (the known switches of the build are offered, a new name can be typed). The changed switches are used only for this one build – the build setting is not changed, and the next time the original switches are back. The build log shows the change (e.g. `−DEBUG_PANEL +NEW_FEATURE`).
+
 ## 1.11.18 – 2026-10-28
 
 - **Balanced buttons on the tiles.** A card that synchronizes to a server keeps *Check* + *Synchronize* as the main buttons with small chips for backup, GitHub or FW. A card **without** synchronization has no single main action any more: its own script, FW build, Monitor, Back up and GitHub are buttons of the same size, two per row – a button with a long label, or an odd last one, takes the whole row. Before, the first action was big and the others were tiny chips (e.g. a big script button next to a tiny FW button).

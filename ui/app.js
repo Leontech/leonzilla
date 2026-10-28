@@ -2616,7 +2616,7 @@ async function confirmSync(t, mode) {
         ${bl.length || !lpick ? `<p class="cl-h">${!bl.length ? "Skript:" : bl.length + (lt && !lpick ? 1 : 0) > 1 ? "Buildy v tomto pořadí:" : "Build:"}</p>
         <ol>${bl.map((b) => `<li><b translate="no">${esc(b.name)}</b> <span class="note">konfigurace ${esc(b.config)}${b.crlf ? " · CRLF" : ""}${b.postBuild ? " · post-build" : ""}</span>
           ${b.postBuild ? `<label class="binfo"><span>Info k verzi</span><input data-binfo="${esc(b.id)}" value="${esc(cardBuildInfo(t, b))}" maxlength="80" spellcheck="false" placeholder="prázdné = bez info" title="Karta si text zapamatuje pro příště"><button type="button" class="icon-btn small" data-binfo-reset="${esc(b.id)}" title="Vrátit výchozí text z nastavení buildu: ${esc(buildInfo(b) || "(bez info)")}">↺</button></label>` : ""}
-          <div class="sw-line">${b.defines.length ? b.defines.map((d) => `<span class="chip ro on">${esc(d)}</span>`).join("") : `<span class="note">žádný přepínač</span>`}</div></li>`).join("")}${lt && !lpick ? `<li><b>${esc(lightName(t))}</b> <span class="note">${scriptOnly(t) ? "" : "skript · "}${esc(lightKind(t))}${lights(t)[0].args ? " · " + esc(lights(t)[0].args) : ""}</span></li>` : ""}</ol>` : ""}
+          <div class="sw-line bdefs" data-bdefs="${esc(b.id)}"></div></li>`).join("")}${lt && !lpick ? `<li><b>${esc(lightName(t))}</b> <span class="note">${scriptOnly(t) ? "" : "skript · "}${esc(lightKind(t))}${lights(t)[0].args ? " · " + esc(lights(t)[0].args) : ""}</span></li>` : ""}</ol>` : ""}
         ${lpick ? `<div id="m-lpick">${lmulti ? `<p class="cl-h">${bl.length ? "Potom skript – vyber, který poběží:" : "Vyber skript, který poběží:"}</p>
           <div class="lpicks">${ls.map((l, i) => `<label class="check lp"><input type="radio" name="m-ls" value="${i}" ${i === lsel ? "checked" : ""}><span><b>${esc(scTitle(l))}</b> <span class="note">${(l.label || "").trim() ? esc(scName(l)) + " · " : ""}${esc(scKind(l))}${scArgs(l).length === 1 && l.args ? " · " + esc(l.args) : ""}</span></span></label>`).join("")}</div>` : ""}
           <div id="m-largs"></div></div>` : ""}
@@ -2642,6 +2642,52 @@ async function confirmSync(t, mode) {
         if (b && inp) { inp.value = buildInfo(b); inp.focus(); }
       }));
       const boxes = [...box.querySelectorAll("#m-checks input")];
+      // switches of the builds: struck out / added only for this run – the build setting is never changed
+      const tmpDefs = {};
+      const drawDefs = (id) => {
+        const b = bl.find((x) => x.id === id), el = box.querySelector(`[data-bdefs="${id}"]`);
+        if (!b || !el) return;
+        const st = (tmpDefs[id] ||= { off: new Set(), add: [] });
+        const changed = st.off.size || st.add.length;
+        el.innerHTML = b.defines.map((d) => `<button type="button" class="chip ro tog ${st.off.has(d) ? "off" : "on"}" data-d="${esc(d)}" title="${st.off.has(d) ? "Vrátit přepínač" : "Vyškrtnout jen pro tento build"}">${esc(d)}</button>`).join("")
+          + st.add.map((d) => `<button type="button" class="chip ro tog on tmp" data-d="${esc(d)}" data-tmp="1" title="Přidáno jen pro tento build – klikem odebrat">+${esc(d)}</button>`).join("")
+          + `<span class="chip-add"><button type="button" data-badd="1" title="Přidat přepínač jen pro tento build">${icon("plus")}přepínač</button></span>`
+          + (changed ? `<span class="bdef-note">jen pro tento build · <button type="button" class="link" data-breset="1">vrátit</button></span>` : !b.defines.length ? `<span class="note">žádný přepínač</span>` : "");
+        el.querySelectorAll("[data-d]").forEach((c) => (c.onclick = () => {
+          const d = c.dataset.d;
+          if (c.dataset.tmp) st.add = st.add.filter((x) => x !== d);
+          else if (st.off.has(d)) st.off.delete(d); else st.off.add(d);
+          drawDefs(id);
+        }));
+        el.querySelector("[data-breset]")?.addEventListener("click", () => { tmpDefs[id] = { off: new Set(), add: [] }; drawDefs(id); });
+        el.querySelector("[data-badd]").onclick = () => {
+          const on = new Set([...b.defines.filter((d) => !st.off.has(d)), ...st.add].map((d) => d.toUpperCase()));
+          const offer = (b.switches || []).map((x) => x.name).filter((n) => !on.has(n.toUpperCase()));
+          const wrap = el.querySelector(".chip-add");
+          wrap.innerHTML = `<input class="bdef-in" list="bdl-${esc(id)}" placeholder="NÁZEV_PŘEPÍNAČE" spellcheck="false" maxlength="60"><datalist id="bdl-${esc(id)}">${offer.map((n) => `<option value="${esc(n)}">`).join("")}</datalist>`;
+          const inp = wrap.querySelector("input");
+          let done = false;
+          const finish = (ok) => {
+            if (done) return;
+            const v = inp.value.trim();
+            if (ok && v && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(v)) { toast("Přepínač smí obsahovat jen písmena, číslice a _ (nesmí začínat číslicí)", true); inp.focus(); return; }
+            done = true;
+            if (ok && v) {
+              const struck = b.defines.find((d) => d.toUpperCase() === v.toUpperCase() && st.off.has(d));
+              if (struck) st.off.delete(struck);
+              else if (!on.has(v.toUpperCase())) st.add.push(v);
+            }
+            drawDefs(id);
+          };
+          inp.onkeydown = (e) => {
+            if (e.key === "Enter") { e.preventDefault(); finish(true); }
+            if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); finish(false); }
+          };
+          inp.onblur = () => finish(true);
+          inp.focus();
+        };
+      };
+      bl.forEach((b) => drawDefs(b.id));
       // variants of the parameters of the chosen script (only when it has more of them)
       const drawArgs = () => {
         const el = $("#m-largs", box);
@@ -2689,8 +2735,14 @@ async function confirmSync(t, mode) {
           }
         }
         if (Object.keys(buildInfoRun).length) scheduleSave(t, 0);
+        // switches changed only for this run (not saved anywhere)
+        const buildDefines = {};
+        bl.forEach((b) => {
+          const st = tmpDefs[b.id];
+          if (st && (st.off.size || st.add.length)) buildDefines[b.id] = [...b.defines.filter((d) => !st.off.has(d)), ...st.add];
+        });
         close();
-        startJob(t, { force, build: doBuild, sync: doSync, buildInfo: buildInfoRun, script, scriptArgs });
+        startJob(t, { force, build: doBuild, sync: doSync, buildInfo: buildInfoRun, buildDefines, script, scriptArgs });
       };
       if (bl.length) buildWarnings(bl).then((html) => { const el = $("#m-bwarn", box); if (el) el.innerHTML = html; });
     });
@@ -2732,7 +2784,7 @@ async function startJob(t, o) {
   }
   try {
     await flushSave(t);
-    await api("POST", `/api/tabs/${t.id}/sync`, { stopDropbox, preview, force: !!o.force, build: !!o.build, backup: !!o.backup, notes: o.notes || [], names: o.names || [], only: o.only || null, buildInfo: o.buildInfo || null, script: o.script || "", scriptArgs: o.scriptArgs ?? null, sync: o.sync !== false });
+    await api("POST", `/api/tabs/${t.id}/sync`, { stopDropbox, preview, force: !!o.force, build: !!o.build, backup: !!o.backup, notes: o.notes || [], names: o.names || [], only: o.only || null, buildInfo: o.buildInfo || null, buildDefines: o.buildDefines && Object.keys(o.buildDefines).length ? o.buildDefines : null, script: o.script || "", scriptArgs: o.scriptArgs ?? null, sync: o.sync !== false });
     S.jobs[t.id] = o.backup ? "scanning" : o.build ? "building" : "connecting";
     if (o.build || o.backup) openBuildWindow(t.id, o.backup ? "backup" : "build");
     S.jobData[t.id] = null;
