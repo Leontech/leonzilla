@@ -55,6 +55,7 @@ A kolem toho:
 - **Vyloučení** u dvojice složek nebo pro celou kartu: `node_modules/`, `*.psd`, `img/raw/`, `build*/` …
 - **Export / import** všech karet, skupin, buildů a nastavení do jednoho souboru – hesla jen na přání a zašifrovaná; import jen přidá, co vybereš.
 - **Nastavení v záložkách** – zvýrazněná záložka hned ukáže, co karta dělá.
+- **Vzdálený přístup z mobilu** – spouštění karet z telefonu přes místní síť nebo VPN (např. WireGuard); jen spouštění, žádné nastavení. Ve výchozím stavu vypnuto.
 - **Čeština a angličtina**, světlý i tmavý vzhled, návod v programu (F1) a PDF.
 
 ## Screenshoty
@@ -71,8 +72,8 @@ A kolem toho:
 | Návod v programu (F1) | Světlý vzhled |
 | ![Výběr skriptu a parametrů](docs/screenshots/cs-scripts.webp) | ![Import](docs/screenshots/cs-import.webp) |
 | Víc skriptů – vybereš jeden a jeho parametry | Import – zaškrtneš, co přidat, nic se nepřepíše |
-| ![O aplikaci](docs/screenshots/cs-about.webp) | |
-| O aplikaci – klik na logo | |
+| ![Vzdálený přístup z mobilu](docs/screenshots/cs-mobile.webp) | ![O aplikaci](docs/screenshots/cs-about.webp) |
+| Vzdálený přístup z mobilu – dlaždice, výběr skriptu, průběh | O aplikaci – klik na logo |
 
 ## Stažení a spuštění
 
@@ -102,6 +103,16 @@ Návod je přímo v programu (tlačítko **?** nebo **F1**) a také jako PDF: [�
 - Okno komunikuje jen s Leonzillou na tomtéž PC (`127.0.0.1`, náhodný port a token). Nikam jinam než na tvoje servery a Git repozitáře se nic neposílá; přihlášení ke Gitu řeší Git sám, Leonzilla žádné tokeny neukládá.
 - Klíč SFTP serveru se při prvním připojení zapamatuje; změněný klíč se odmítne, dokud ho nepotvrdíš. Certifikáty FTPS se ověřují (u providera s nesouhlasícím certifikátem jde kontrola vypnout jen pro danou kartu).
 - **Složku `Leonzilla_data` nikomu neposílej a nedávej do Gitu** – je v ní nastavení tvých serverů.
+
+## Vzdálený přístup z mobilu
+
+Nejsi u PC, ale build nebo nahrání by se hodilo pustit hned? Na PC zapni *Nastavení aplikace → Obecné → Vzdálený přístup*, nastav heslo pro telefon a v telefonu otevři zobrazenou adresu (je k ní i QR kód). Telefon dostane stejné dlaždice upravené pro malý displej – po „Přidat na plochu“ vypadá jako aplikace.
+
+- **Jen spouštění.** Z telefonu spustíš, co karty už mají – synchronizaci, buildy, vlastní skripty (s výběrem skriptu a parametrů), přepínače pro jeden build, zálohy, GitHub, FW build a nahrání – a sleduješ průběh a log. Karty, buildy a nastavení se mění jen na PC a na PC se nic neotevírá (složky, soubory, terminál). Hlídá to server, nejde jen o skrytá tlačítka.
+- **Jen místní síť nebo VPN.** Určeno pro domácí síť nebo VPN do ní (WireGuard, Tailscale …). Leonzilla pustí jen soukromé adresy a adresy VPN – **port nikdy nepřesměrovávej na routeru do internetu**: spojení je obyčejné HTTP, šifruje ho až VPN.
+- **Heslo a zařízení.** Heslo se ukládá jen jako otisk (scrypt); každé přihlášené zařízení má vlastní relaci (uloženou jen jako otisk), v nastavení je vidíš a odhlásíš; změna hesla odhlásí všechna zařízení. Po 5 špatných pokusech se adresa na 10 minut zablokuje.
+- **Ve výchozím stavu vypnuto, pro každé PC zvlášť.** Konfigurace v Dropboxu je společná, poslouchá jen PC, kde je to zapnuté. Výchozí port 8765; Windows se poprvé zeptají na firewall – povol jen *Soukromé sítě*.
+- Co běží, je vidět na obou stranách: úloha spuštěná z telefonu ukazuje průběh i v okně na PC a naopak.
 
 ## Portable a víc PC
 

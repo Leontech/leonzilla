@@ -39,6 +39,7 @@ require (
 require (
 	github.com/jchv/go-winloader v0.0.0-20250406163304-c1995be93bd1 // indirect
 	github.com/kr/fs v0.1.0 // indirect
+	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e // indirect
 )
 
 replace go.yaml.in/yaml/v3 => github.com/yaml/go-yaml/v3 v3.0.4

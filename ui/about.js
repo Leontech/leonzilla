@@ -46,6 +46,7 @@ async function openAbout() {
     box.classList.add("about-modal");
     box.querySelectorAll("a[data-url]").forEach((a) => (a.onclick = (e) => {
       e.preventDefault();
+      if (REMOTE) { window.open(a.href, "_blank", "noopener"); return; } // on the phone: open on the phone
       api("POST", "/api/openurl", { url: a.href }).catch((err) => toast(err.message, true));
     }));
   });

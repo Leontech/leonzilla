@@ -13,7 +13,7 @@ import (
 	"time"
 )
 
-const appVersion = "1.11.19"
+const appVersion = "1.11.20"
 const appTitle = "Leonzilla"
 
 // dataDir = folder "Leonzilla_data" next to the exe (portable – lives in Dropbox together with the exe).
@@ -48,6 +48,7 @@ func main() {
 		f.Close()
 	}
 	runner := newRunner(store)
+	go watchActivity(runner)
 	tokB := make([]byte, 16)
 	_, _ = rand.Read(tokB)
 	token := hex.EncodeToString(tokB)

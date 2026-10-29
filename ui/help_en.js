@@ -12,6 +12,7 @@ const HELP_SECTIONS_EN = [
   ["fw", "FW build and monitor"],
   ["security", "Passwords and security"],
   ["portable", "Portable and more PCs"],
+  ["remote", "Remote access from a phone"],
   ["keys", "Keys and tricks"],
 ];
 
@@ -187,6 +188,18 @@ function helpHTMLen() {
           <li>Needs Windows 10/11 with WebView2 (always present in Windows 11).</li>
           <li><b>Export / import.</b> <i>App settings → General → Export</i> saves cards, groups, builds and general settings into one file (default folder <code>Leonzilla_data\\export</code>) – for a backup or moving to another installation. Server passwords only when you tick <i>Including server passwords</i>, then encrypted with an export password. <i>Import…</i> shows what the file contains and only <b>adds</b> the ticked cards, groups and builds – it overwrites nothing (a group or build with the same name is reused) and backs up <code>config.json</code> to <code>Leonzilla_data\\backup</code> first. A tab that has something set is green with a dot and a short summary (e.g. “2 scripts”); tabs with nothing set are grey. The arrow keys ← → switch between the tabs.</li>
           <li><b>Language</b> – Czech or English: <i>App settings → Language</i> (default by the Windows display language).</li>
+        </ul>
+      </section>
+
+      <section id="hp-remote">
+        <h2><span class="hp-ic sp">${icon("server")}</span>Remote access from a phone</h2>
+        <ul class="hp-list">
+          <li><b>What for:</b> run a card from your phone when you are not at the PC – synchronization, build, script, backup, GitHub, FW build. The phone must be in the <b>local network or in a VPN</b> into it (e.g. WireGuard).</li>
+          <li><b>Turning it on</b> (on the PC): <i>App settings → General → Remote access</i> – set a password for the phone (at least 6 characters), turn it on and change the port if needed (default 8765). It is switched on separately on each PC. The first time Windows asks about the firewall – tick only <i>Private networks</i>.</li>
+          <li><b>Phone:</b> open the shown address (or scan the QR code), sign in with the password and use “Add to home screen” – Leonzilla gets an icon like an app. The phone stays signed in.</li>
+          <li><b>From the phone you can only run</b> what the cards have set, and watch the progress and log. Cards, builds and settings cannot be changed there and nothing is opened on the PC (folders, files, terminal).</li>
+          <li><b>Security:</b> Leonzilla lets in only addresses from the local network and VPNs; the password is stored only as a hash; after 5 wrong attempts the address is blocked for 10 minutes. The connection is not HTTPS – the VPN encrypts it, so <b>never forward the port on your router to the internet</b>. Signed-in devices are listed in the settings and can be signed out with one button; changing the password signs out all of them.</li>
+          <li>What is started from the phone is shown in the window on the PC too (and the other way round).</li>
         </ul>
       </section>
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.11.20 – 2026-10-29
+
+**Remote access from a phone**
+- *App settings → General → Remote access*: run cards from your phone over the local network or a VPN (e.g. WireGuard). Off by default, switched on per PC; set a password, open the shown address on the phone (QR code), add it to the home screen.
+- **Only running** what the cards have: synchronize, builds, own scripts (choice of script and parameters), switches for one build, backups, GitHub, FW build and flash – with progress and log. No card or app settings from the phone, nothing is opened on the PC; the server enforces it.
+- **Security:** only private / VPN addresses are accepted (never forward the port to the internet – plain HTTP, the VPN encrypts it); the password is stored as a scrypt hash; per-device sessions that can be signed out; 10-minute block after 5 wrong attempts.
+- The tiles and dialogs are laid out for a phone (one column, bigger buttons, dialogs from the bottom).
+
+**Other**
+- A job started from the phone (or from the window) is shown on the other side too – progress while it runs, and the "last run" line when it is done.
+- Switching the tabs of the card settings or the app settings no longer moves the page or the window – the tabs stay where they are.
+- Leonzilla writes `%LOCALAPPDATA%\Leonzilla\activity.json` (a job is running, time of the last request from the phone), so another program – e.g. one that puts the PC to sleep after a remote session – knows Leonzilla is still in use.
+
 ## 1.11.19 – 2026-10-28
 
 - **Switches for one build only.** In the confirmation of a RAD Studio build, click a switch to strike it out for this run (click again to put it back), or add another one with *+ switch* (the known switches of the build are offered, a new name can be typed). The changed switches are used only for this one build – the build setting is not changed, and the next time the original switches are back. The build log shows the change (e.g. `−DEBUG_PANEL +NEW_FEATURE`).

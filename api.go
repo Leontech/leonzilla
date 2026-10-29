@@ -34,7 +34,10 @@ type API struct {
 	brMu   sync.Mutex
 	browse map[string]*browseSess
 
-	fw *FwManager
+	fw      *FwManager
+	mux     *http.ServeMux // API routes (apiMux)
+	muxOnce sync.Once
+	mobile  *Mobile // remote access from a phone (mobile.go)
 }
 
 type browseSess struct {
@@ -46,6 +49,8 @@ type browseSess struct {
 
 func newAPI(s *Store, r *Runner, token string) *API {
 	a := &API{store: s, runner: r, token: token, browse: map[string]*browseSess{}, lastPing: time.Now(), fw: newFwManager(s)}
+	a.mobile = newMobile(a)
+	a.mobile.apply()
 	go a.janitor()
 	return a
 }
@@ -77,70 +82,7 @@ func (a *API) Handler() http.Handler {
 		static.ServeHTTP(w, r)
 	}))
 
-	api := http.NewServeMux()
-	api.HandleFunc("GET /api/state", a.hState)
-	api.HandleFunc("POST /api/unlock", a.hUnlock)
-	api.HandleFunc("POST /api/tabs", a.hCreateTab)
-	api.HandleFunc("PUT /api/tabs/{id}", a.hUpdateTab)
-	api.HandleFunc("DELETE /api/tabs/{id}", a.hDeleteTab)
-	api.HandleFunc("POST /api/tabs/{id}/duplicate", a.hDuplicate)
-	api.HandleFunc("POST /api/order", a.hOrder)
-	api.HandleFunc("POST /api/layout", a.hLayout)
-	api.HandleFunc("POST /api/groups", a.hGroups)
-	api.HandleFunc("POST /api/builds", a.hBuilds)
-	api.HandleFunc("POST /api/builds/inspect", a.hBuildInspect)
-	api.HandleFunc("GET /api/radstudio", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, map[string]bool{"running": radStudioRunning()})
-	})
-	api.HandleFunc("POST /api/tabs/{id}/test", a.hTest)
-	api.HandleFunc("POST /api/tabs/{id}/browse", a.hBrowse)
-	api.HandleFunc("POST /api/tabs/{id}/mkdir", a.hMkdir)
-	api.HandleFunc("POST /api/tabs/{id}/trustkey", a.hTrustKey)
-	api.HandleFunc("POST /api/tabs/{id}/sync", a.hSync)
-	api.HandleFunc("POST /api/tabs/{id}/cancel", a.hCancel)
-	api.HandleFunc("GET /api/tabs/{id}/job", a.hJob)
-	api.HandleFunc("POST /api/tabs/{id}/openlog", a.hOpenLog)
-	api.HandleFunc("POST /api/settings", a.hSettings)
-	api.HandleFunc("GET /api/ui", a.hUIGet)
-	api.HandleFunc("POST /api/ui", a.hUISet)
-	api.HandleFunc("POST /api/master", a.hMaster)
-	api.HandleFunc("POST /api/export", a.hExport)
-	api.HandleFunc("GET /api/export", a.hExportList)
-	api.HandleFunc("POST /api/import/preview", a.hImportPreview)
-	api.HandleFunc("POST /api/import", a.hImport)
-	api.HandleFunc("POST /api/pickdir", a.hPickDir)
-	api.HandleFunc("POST /api/pickexclude", a.hPickExclude)
-	api.HandleFunc("POST /api/pickfile", a.hPickFile)
-	api.HandleFunc("POST /api/openfolder", a.hOpenFolder)
-	api.HandleFunc("POST /api/openurl", func(w http.ResponseWriter, r *http.Request) {
-		var req struct{ URL string }
-		_ = readJSON(r, &req)
-		if !strings.HasPrefix(req.URL, "mailto:") && !strings.HasPrefix(req.URL, "https://") {
-			writeErr(w, 400, errors.New(T("nepodporovaný odkaz")))
-			return
-		}
-		if err := openWithShell(req.URL); err != nil {
-			writeErr(w, 500, err)
-			return
-		}
-		writeJSON(w, map[string]bool{"ok": true})
-	})
-	api.HandleFunc("POST /api/localcheck", a.hLocalCheck)
-	api.HandleFunc("GET /api/git/info", a.hGitInfo)
-	api.HandleFunc("GET /api/dropbox", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, dropboxStatus()) })
-	api.HandleFunc("GET /api/serialports", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, map[string]any{"ports": listSerialPorts()}) })
-	api.HandleFunc("POST /api/fw/detect", a.hFwDetect)
-	api.HandleFunc("POST /api/tabs/{id}/fw/run", a.hFwRun)
-	api.HandleFunc("GET /api/tabs/{id}/fw", a.hFwState)
-	api.HandleFunc("POST /api/tabs/{id}/fw/input", a.hFwInput)
-	api.HandleFunc("POST /api/tabs/{id}/fw/reset", a.hFwReset)
-	api.HandleFunc("POST /api/tabs/{id}/fw/stop", a.hFwStop)
-	api.HandleFunc("POST /api/tabs/{id}/fw/terminal", a.hFwTerminal)
-	api.HandleFunc("POST /api/git/status", a.hGitStatus)
-	api.HandleFunc("POST /api/git/diff", a.hGitDiff)
-	api.HandleFunc("POST /api/git/commit", a.hGitCommit)
-	api.HandleFunc("POST /api/tabs/{id}/gitdone", a.hGitDone)
-	api.HandleFunc("POST /api/ping", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, map[string]bool{"ok": true}) })
+	api := a.apiMux()
 
 	mux.Handle("/api/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if a.host != "" && r.Host != a.host { // DNS rebinding protection
@@ -164,6 +106,91 @@ func (a *API) Handler() http.Handler {
 		api.ServeHTTP(w, r)
 	}))
 	return mux
+}
+
+// apiMux is the API without the token check (used by the window server and, filtered, by the phone server).
+func (a *API) apiMux() *http.ServeMux {
+	a.muxOnce.Do(func() {
+		api := http.NewServeMux()
+		api.HandleFunc("GET /api/state", a.hState)
+		api.HandleFunc("POST /api/unlock", a.hUnlock)
+		api.HandleFunc("POST /api/tabs", a.hCreateTab)
+		api.HandleFunc("PUT /api/tabs/{id}", a.hUpdateTab)
+		api.HandleFunc("DELETE /api/tabs/{id}", a.hDeleteTab)
+		api.HandleFunc("POST /api/tabs/{id}/duplicate", a.hDuplicate)
+		api.HandleFunc("POST /api/order", a.hOrder)
+		api.HandleFunc("POST /api/layout", a.hLayout)
+		api.HandleFunc("POST /api/groups", a.hGroups)
+		api.HandleFunc("POST /api/builds", a.hBuilds)
+		api.HandleFunc("POST /api/builds/inspect", a.hBuildInspect)
+		api.HandleFunc("GET /api/radstudio", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, map[string]bool{"running": radStudioRunning()})
+		})
+		api.HandleFunc("POST /api/tabs/{id}/test", a.hTest)
+		api.HandleFunc("POST /api/tabs/{id}/browse", a.hBrowse)
+		api.HandleFunc("POST /api/tabs/{id}/mkdir", a.hMkdir)
+		api.HandleFunc("POST /api/tabs/{id}/trustkey", a.hTrustKey)
+		api.HandleFunc("POST /api/tabs/{id}/sync", a.hSync)
+		api.HandleFunc("POST /api/tabs/{id}/cancel", a.hCancel)
+		api.HandleFunc("GET /api/tabs/{id}/job", a.hJob)
+		api.HandleFunc("POST /api/tabs/{id}/openlog", a.hOpenLog)
+		api.HandleFunc("POST /api/settings", a.hSettings)
+		api.HandleFunc("GET /api/ui", a.hUIGet)
+		api.HandleFunc("POST /api/ui", a.hUISet)
+		api.HandleFunc("POST /api/master", a.hMaster)
+		api.HandleFunc("POST /api/export", a.hExport)
+		api.HandleFunc("GET /api/export", a.hExportList)
+		api.HandleFunc("POST /api/import/preview", a.hImportPreview)
+		api.HandleFunc("POST /api/import", a.hImport)
+		api.HandleFunc("POST /api/pickdir", a.hPickDir)
+		api.HandleFunc("POST /api/pickexclude", a.hPickExclude)
+		api.HandleFunc("POST /api/pickfile", a.hPickFile)
+		api.HandleFunc("POST /api/openfolder", a.hOpenFolder)
+		api.HandleFunc("POST /api/openurl", func(w http.ResponseWriter, r *http.Request) {
+			var req struct{ URL string }
+			_ = readJSON(r, &req)
+			if !strings.HasPrefix(req.URL, "mailto:") && !strings.HasPrefix(req.URL, "https://") {
+				writeErr(w, 400, errors.New(T("nepodporovaný odkaz")))
+				return
+			}
+			if err := openWithShell(req.URL); err != nil {
+				writeErr(w, 500, err)
+				return
+			}
+			writeJSON(w, map[string]bool{"ok": true})
+		})
+		api.HandleFunc("POST /api/localcheck", a.hLocalCheck)
+		api.HandleFunc("GET /api/git/info", a.hGitInfo)
+		api.HandleFunc("GET /api/dropbox", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, dropboxStatus()) })
+		api.HandleFunc("GET /api/serialports", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, map[string]any{"ports": listSerialPorts()}) })
+		api.HandleFunc("POST /api/fw/detect", a.hFwDetect)
+		api.HandleFunc("POST /api/tabs/{id}/fw/run", a.hFwRun)
+		api.HandleFunc("GET /api/tabs/{id}/fw", a.hFwState)
+		api.HandleFunc("POST /api/tabs/{id}/fw/input", a.hFwInput)
+		api.HandleFunc("POST /api/tabs/{id}/fw/reset", a.hFwReset)
+		api.HandleFunc("POST /api/tabs/{id}/fw/stop", a.hFwStop)
+		api.HandleFunc("POST /api/tabs/{id}/fw/terminal", a.hFwTerminal)
+		api.HandleFunc("POST /api/git/status", a.hGitStatus)
+		api.HandleFunc("POST /api/git/diff", a.hGitDiff)
+		api.HandleFunc("POST /api/git/commit", a.hGitCommit)
+		api.HandleFunc("POST /api/tabs/{id}/gitdone", a.hGitDone)
+		// ping: keep-alive + which cards are busy right now (a job may have been started from the phone or the window)
+		api.HandleFunc("POST /api/ping", func(w http.ResponseWriter, r *http.Request) {
+			writeJSON(w, map[string]any{"ok": true, "jobs": a.runner.Phases()})
+		})
+		api.HandleFunc("GET /api/mobile", a.hMobileGet)
+		api.HandleFunc("POST /api/mobile", a.hMobileSet)
+		api.HandleFunc("POST /api/mobile/logoutall", a.hMobileLogoutAll)
+		api.HandleFunc("GET /api/mobile/qr", a.hMobileQR)
+		a.mux = api
+	})
+	return a.mux
+}
+
+func (s *Store) isLocked() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.locked
 }
 
 func (a *API) sinceLastPing() time.Duration {

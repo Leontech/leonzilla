@@ -62,6 +62,7 @@ And around it:
 - **Master password** – server passwords encrypted with scrypt + AES-256-GCM (optional).
 - **Export / import** of all cards, groups, builds and settings in one file – passwords only on request and encrypted; import only adds what you pick.
 - **Settings in tabs** – a highlighted tab shows at a glance what a card does.
+- **Remote access from a phone** – run cards from your phone over the local network or a VPN (e.g. WireGuard); only running, no settings. Off by default.
 - **Portable** – one exe and a `Leonzilla_data` folder next to it. Keep both in Dropbox and use them on several PCs.
 - **Czech and English** UI, light and dark theme, built-in guide (F1) and a PDF manual.
 
@@ -79,8 +80,8 @@ And around it:
 | Built-in guide (F1) | Light theme |
 | ![Choosing a script and its parameters](docs/screenshots/en-scripts.webp) | ![Import](docs/screenshots/en-import.webp) |
 | More scripts – choose one and its parameters | Import – tick what to add, nothing is overwritten |
-| ![About](docs/screenshots/en-about.webp) | |
-| About – click the logo | |
+| ![Remote access from a phone](docs/screenshots/en-mobile.webp) | ![About](docs/screenshots/en-about.webp) |
+| Remote access from a phone – tiles, choosing a script, progress | About – click the logo |
 
 ## Download and run
 
@@ -110,6 +111,16 @@ The guide is built in (**?** button or **F1**) and also included as a PDF: [Engl
 - The window talks only to Leonzilla on the same PC (`127.0.0.1`, random port and token). Nothing is sent anywhere except to your own servers and Git remotes; Git sign-in is handled by Git itself, Leonzilla stores no tokens.
 - SFTP host keys are remembered on first use; a changed key is refused until you confirm it. FTPS certificates are verified (can be relaxed per card for providers with a mismatching certificate).
 - **Never share or commit your `Leonzilla_data` folder** – it contains your server settings.
+
+## Remote access from a phone
+
+Not at the PC, but the build or the upload should run now? Turn on *App settings → General → Remote access* on the PC, set a password for the phone and open the shown address on the phone (there is a QR code). The phone gets the same tiles, laid out for a small screen – add it to the home screen and it looks like an app.
+
+- **Only running.** From the phone you start what the cards already have – synchronize, builds, own scripts (with the choice of script and parameters), switches for one build, backups, GitHub, FW build and flash – and watch the progress and the log. Cards, builds and settings can only be changed on the PC, and nothing is opened on the PC (folders, files, terminal). The server enforces this, it is not just hidden buttons.
+- **Local network or VPN only.** Meant for your home network or a VPN into it (WireGuard, Tailscale …). Leonzilla accepts only private and VPN addresses – **never forward the port on your router to the internet**: the connection is plain HTTP, the VPN encrypts it.
+- **Password and devices.** The password is stored only as a scrypt hash; every signed-in device gets its own session (stored only as a hash) that you can see and sign out in the settings; changing the password signs out all devices. After 5 wrong attempts the address is blocked for 10 minutes.
+- **Off by default, per PC.** It is switched on separately on each PC (the configuration in Dropbox is shared, only the chosen PC listens). Default port 8765; Windows asks about the firewall the first time – allow *Private networks* only.
+- What runs is visible on both sides: a job started from the phone shows its progress in the window on the PC, and the other way round.
 
 ## Portable and more PCs
 

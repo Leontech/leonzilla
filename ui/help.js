@@ -13,6 +13,7 @@ const HELP_SECTIONS = [
   ["fw", "FW build a monitor"],
   ["security", "Hesla a bezpečnost"],
   ["portable", "Portable a více PC"],
+  ["remote", "Vzdálený přístup z mobilu"],
   ["keys", "Klávesy a triky"],
 ];
 
@@ -191,6 +192,18 @@ function helpHTMLcs() {
         </ul>
       </section>
 
+      <section id="hp-remote">
+        <h2><span class="hp-ic sp">${icon("server")}</span>Vzdálený přístup z mobilu</h2>
+        <ul class="hp-list">
+          <li><b>K čemu:</b> spustit kartu z telefonu, když nejsi u PC – synchronizaci, build, skript, zálohu, GitHub, FW build. Telefon musí být v <b>místní síti nebo ve VPN</b> do ní (např. WireGuard).</li>
+          <li><b>Zapnutí</b> (na PC): <i>Nastavení aplikace → Obecné → Vzdálený přístup</i> – nastav heslo pro telefon (aspoň 6 znaků), zapni a případně změň port (výchozí 8765). Zapíná se zvlášť na každém PC. Windows se při prvním zapnutí zeptají na firewall – zaškrtni jen <i>Soukromé sítě</i>.</li>
+          <li><b>Telefon:</b> otevři zobrazenou adresu (nebo naskenuj QR kód), přihlas se heslem a dej „Přidat na plochu“ – Leonzilla bude mít ikonu jako aplikace. Přihlášení si telefon pamatuje.</li>
+          <li><b>Z mobilu jde jen spouštět</b> to, co mají karty nastavené, a sledovat průběh a log. Karty, buildy ani nastavení se tam měnit nedají a nic se na PC neotevírá (složky, soubory, terminál).</li>
+          <li><b>Bezpečnost:</b> Leonzilla pustí jen adresy z místní sítě a VPN; heslo je uložené jen jako otisk; po 5 špatných pokusech se adresa na 10 minut zablokuje. Spojení není HTTPS – šifruje ho VPN, proto <b>port nikdy nepřesměrovávej na routeru do internetu</b>. Přihlášená zařízení vidíš v nastavení a jedním tlačítkem je odhlásíš; změna hesla odhlásí všechna.</li>
+          <li>Co se spustí z mobilu, vidí i okno na PC (a naopak).</li>
+        </ul>
+      </section>
+
       <section id="hp-keys">
         <h2><span class="hp-ic sp">${icon("sliders")}</span>Klávesy a triky</h2>
         <div class="hp-keys">
@@ -248,6 +261,7 @@ function openHelp(section) {
     mark("start");
     box.querySelectorAll("a[data-url]").forEach((a) => (a.onclick = (e) => {
       e.preventDefault();
+      if (REMOTE) { window.open(a.href, "_blank", "noopener"); return; } // on the phone: open on the phone
       api("POST", "/api/openurl", { url: a.href }).catch((err) => toast(err.message, true));
     }));
     if (section) { const el = box.querySelector("#hp-" + section); if (el) body.scrollTop = el.offsetTop - 18; }

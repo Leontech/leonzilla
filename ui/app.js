@@ -1,7 +1,11 @@
 "use strict";
 /* Leonzilla – UI */
 
-const TOKEN = (location.hash.match(/t=(\w+)/) || [])[1] || sessionStorage.getItem("lz-token") || "";
+// REMOTE = the page is opened from a phone through the remote access server (mobile.go): no token, a login cookie
+// instead, and only running what the cards have – no card or app settings, nothing that opens programs on the PC
+const REMOTE = !!window.LZ_REMOTE;
+if (REMOTE) document.documentElement.classList.add("remote");
+const TOKEN = REMOTE ? "" : (location.hash.match(/t=(\w+)/) || [])[1] || sessionStorage.getItem("lz-token") || "";
 if (TOKEN) { sessionStorage.setItem("lz-token", TOKEN); history.replaceState(null, "", location.pathname); }
 
 const $ = (s, el = document) => el.querySelector(s);
@@ -97,6 +101,7 @@ function orderedTabs() {
 }
 // moves card `id` into group `group`, before card `beforeId` (or to the end of the group), and saves
 function moveCard(id, group, beforeId) {
+  if (REMOTE) return;
   const t = S.tabs.find((x) => x.id === id);
   if (!t || id === beforeId) return;
   t.group = group;
@@ -126,7 +131,7 @@ async function api(method, path, body) {
   let r;
   try {
     r = await fetch(path, {
-      method, headers: { "X-Token": TOKEN, "Content-Type": "application/json" },
+      method, headers: REMOTE ? { "X-LZ-Mobile": "1", "Content-Type": "application/json" } : { "X-Token": TOKEN, "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
   } finally { if (dlg) setTimeout(() => S.inflight--, 400); }
@@ -134,7 +139,10 @@ async function api(method, path, body) {
   try { data = await r.json(); } catch {}
   if (!r.ok) {
     if (r.status === 423) { S.locked = true; render(); }
-    throw new Error(data.error || `Chyba ${r.status}`);
+    if (r.status === 401 && REMOTE && !path.startsWith("/api/mobile/")) { renderLogin(); }
+    const e = new Error(data.error || `Chyba ${r.status}`);
+    e.status = r.status;
+    throw e;
   }
   return data;
 }
@@ -178,6 +186,7 @@ async function load() {
     applyTheme();
     // window state of this PC (collapsed groups, open tabs, last card) – kept by the app per computer, see uiGet
     S.ui = st.ui && typeof st.ui === "object" ? st.ui : {};
+    if (REMOTE) { try { S.ui = JSON.parse(localStorage.getItem("lz-ui") || "{}") || {}; } catch { S.ui = {}; } }
     const remembered = uiGet("current", null);
     if (!S.tabs.some((t) => t.id === S.current)) S.current = S.tabs.some((t) => t.id === remembered) ? remembered : S.tabs[0]?.id ?? null;
     const view = uiGet("view", "overview");
@@ -190,12 +199,13 @@ async function load() {
     else checkAllLocal();
     bgKick();
   } catch (e) {
+    if (REMOTE && e.status === 401) return renderLogin();
     document.body.innerHTML = `<div class="empty"><h1>Leonzilla neodpovídá</h1><p>${esc(e.message)}</p></div>`;
   }
 }
 
 function applyTheme() {
-  const t = S.settings.theme || "auto";
+  const t = (REMOTE && remoteTheme()) || S.settings?.theme || "auto";
   if (t === "auto") document.documentElement.removeAttribute("data-theme");
   else document.documentElement.setAttribute("data-theme", t);
 }
@@ -220,6 +230,7 @@ function uiSet(key, value) {
 }
 function uiFlush() {
   const body = uiDirty; uiDirty = {};
+  if (REMOTE) { try { localStorage.setItem("lz-ui", JSON.stringify(S.ui || {})); } catch {} return; } // the phone keeps its own
   if (Object.keys(body).length) api("POST", "/api/ui", body).catch(() => {});
 }
 addEventListener("pagehide", () => { clearTimeout(uiTimer); uiFlush(); });
@@ -280,6 +291,7 @@ async function checkAllLocal() {
 // autosave: typing waits 800 ms of quiet (fewer writes into Dropbox); a failed save is retried once quietly
 // before an error is shown – Dropbox briefly locks the freshly changed config.json while it uploads it
 function scheduleSave(tab, delay = 800) {
+  if (REMOTE) return; // the phone only runs – remembered choices (script, parameters …) are kept by the PC
   if (editing(tab.id)) return markDirty(tab); // edit mode: saved only by "Uložit"
   clearTimeout(S.saveTimers[tab.id]);
   setSaveState("Ukládám…");
@@ -324,6 +336,7 @@ async function putTab(tab) {
 
    when closing the tab) puts the card back as it was. Switching to another card keeps the draft (● on the tab). */
 function beginEdit(t) {
+  if (REMOTE) return remoteOnly();
   S.editing.add(t.id);
   S.snap[t.id] = JSON.parse(JSON.stringify(t));
   S.dirty.delete(t.id);
@@ -460,7 +473,7 @@ function renderTabs() {
     el.onauxclick = (e) => { if (e.button === 1) { e.preventDefault(); closeTab(id); } }; // middle click
     el.onkeydown = (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); select(id); } };
     el.ondblclick = () => { if (editing(id)) startRename(el, id); };
-    el.oncontextmenu = (e) => { e.preventDefault(); tabMenu(id, e.clientX, e.clientY); };
+    el.oncontextmenu = (e) => { e.preventDefault(); if (!REMOTE) tabMenu(id, e.clientX, e.clientY); };
     el.ondragstart = (e) => { e.dataTransfer.setData("text/plain", id); e.dataTransfer.effectAllowed = "move"; };
     el.ondragover = (e) => { e.preventDefault(); el.classList.add("drag-over"); };
     el.ondragleave = () => el.classList.remove("drag-over");
@@ -544,6 +557,7 @@ document.addEventListener("click", (e) => { if (!e.target.closest("#ctx")) $("#c
 
 // copy of the card with all settings (server, password, folders, builds, backups, GitHub) right after it, opened for editing
 async function duplicateTab(t) {
+  if (REMOTE) return remoteOnly();
   try {
     if (S.dirty.has(t.id) && !(await commitEdit(t))) return; // the copy is made from the saved card
     await flushSave(t);
@@ -558,6 +572,7 @@ async function duplicateTab(t) {
 }
 
 function deleteTab(t) {
+  if (REMOTE) return remoteOnly();
   modal(`
     <div class="modal-h"><h3>Smazat kartu „${esc(t.name)}“?</h3>
     <p>Smaže se jen nastavení v Leonzille. Soubory v PC ani na serveru se nemění.</p></div>
@@ -772,8 +787,14 @@ function bindEditTabs(t) {
     const b = e.target.closest("[data-etab]");
     if (!b) return;
     S.editTab[t.id] = b.dataset.etab;
+    // the tabs stay where they are: when they are stuck at the top, the new tab starts right under them
+    const sc = nav.closest("main") || document.scrollingElement, top0 = nav.getBoundingClientRect().top;
+    const stuck = parseFloat(getComputedStyle(nav).top) >= top0 - 1 - sc.getBoundingClientRect().top;
     document.querySelectorAll(".etab-pane").forEach((p) => (p.hidden = p.dataset.pane !== b.dataset.etab));
     refreshEditTabs(t);
+    const pane = document.querySelector(`.etab-pane[data-pane="${b.dataset.etab}"]`);
+    if (stuck && pane) sc.scrollTop += pane.getBoundingClientRect().top - nav.getBoundingClientRect().bottom - 4;
+    else sc.scrollTop += nav.getBoundingClientRect().top - top0;
     showPathEnds();
   };
   nav.onkeydown = (e) => { // ← → between the tabs
@@ -1036,7 +1057,7 @@ function renderOverview() {
   const gs = groups();
   const col = collapsedGroups();
   const tilesOf = (gid) => orderedTabs().filter((t) => groupOf(t) === gid);
-  const tile = (t) => `<article class="tile" draggable="true" data-id="${t.id}" style="--c:${esc(t.color)}">${tileInner(t)}</article>`;
+  const tile = (t) => `<article class="tile" draggable="${!REMOTE}" data-id="${t.id}" style="--c:${esc(t.color)}">${tileInner(t)}</article>`;
   const sections = [...gs.map((g) => ({ id: g.id, name: g.name })), { id: "", name: gs.length ? "Bez skupiny" : "" }]
     .filter((g) => g.id !== "" || tilesOf("").length || !gs.length);
   const count = (k) => `${k} ${k === 1 ? "projekt" : k > 1 && k < 5 ? "projekty" : "projektů"}`;
@@ -1102,7 +1123,7 @@ function renderOverview() {
   let dragId = null;
   const clearMarks = () => page.querySelectorAll(".drop-before, .drop-after, .drop-into").forEach((x) => x.classList.remove("drop-before", "drop-after", "drop-into"));
   page.querySelectorAll(".tile").forEach((el) => {
-    el.oncontextmenu = (e) => { e.preventDefault(); tabMenu(el.dataset.id, e.clientX, e.clientY); };
+    el.oncontextmenu = (e) => { e.preventDefault(); if (!REMOTE) tabMenu(el.dataset.id, e.clientX, e.clientY); };
     el.ondragstart = (e) => { dragId = el.dataset.id; e.dataTransfer.setData("text/plain", dragId); e.dataTransfer.effectAllowed = "move"; requestAnimationFrame(() => el.classList.add("dragging")); };
     el.ondragend = () => { el.classList.remove("dragging"); clearMarks(); dragId = null; };
   });
@@ -2552,6 +2573,7 @@ function renderTabsName(t) {
 /* ------------------------------------------------------------------ actions */
 
 async function addTab(group = "") {
+  if (REMOTE) return remoteOnly();
   if (typeof group !== "string") group = "";
   try {
     const t = await api("POST", "/api/tabs", { name: "", group });
@@ -3128,6 +3150,7 @@ function setTabsHtml(active) {
 }
 
 function openSettings(focus = false) {
+  if (REMOTE) return openRemoteMenu();
   const focusGroups = focus === true || focus === "groups";
   const s = S.settings;
   // App settings in tabs like the card settings; groups / builds open their tab directly
@@ -3165,6 +3188,9 @@ function openSettings(focus = false) {
         <div class="xpw" id="s-xpwbox" hidden><input type="password" id="s-xp1" placeholder="Heslo k exportu" autocomplete="new-password"><input type="password" id="s-xp2" placeholder="Znovu heslo k exportu" autocomplete="new-password"></div>
         <div class="row-btns" style="margin-top:6px"><button class="ghost" id="s-xgo">${icon("up")}Exportovat</button><button class="ghost" id="s-imp">${icon("file")}Importovat…</button></div>
         <span class="note" id="s-xnote"></span></div>
+      <div class="f" id="s-mobile"><span class="lab">Vzdálený přístup (z mobilu)</span>
+        <span class="note">Spouštění karet z telefonu přes místní síť nebo VPN (např. WireGuard do domácí sítě). Z mobilu jde jen <b>spouštět</b> – karty a nastavení se tam měnit nedají. Zapíná se zvlášť na každém PC.</span>
+        <div id="s-mob-body"><span class="note">Načítám…</span></div></div>
       <div class="f" id="s-pcs"><span class="lab">Více počítačů (Dropbox)</span>
         <span class="note"><b>Společné pro všechna PC</b> (<code>Leonzilla_data\\config.json</code>): karty a jejich pořadí, skupiny, servery a hesla, buildy a kompilátor, Dropbox u karet, jazyk, vzhled, souběžné nahrávání, hlavní heslo; také stav nahrání a logy.<br><b>Jen tento PC</b>: sbalené skupiny, otevřené záložky a poslední karta (<code>Leonzilla_data\\ui\\${esc(S.pc || "PC")}.json</code>), velikost a poloha okna (<code>%LOCALAPPDATA%\\Leonzilla</code>) a spouštění s Windows.</span></div>
       </div>
@@ -3331,6 +3357,49 @@ function openSettings(focus = false) {
       } catch (e) { toast(e.message, true); }
     };
     $("#s-imp", box).onclick = () => openImport();
+    // remote access from a phone
+    const qrURLs = [];
+    const drawMobile = (v) => {
+      const el = $("#s-mob-body", box);
+      if (!el) return;
+      el.innerHTML = `
+        <label class="check"><input type="checkbox" id="s-mob-on" ${v.enabled ? "checked" : ""} ${v.hasPass ? "" : "disabled"}>Zapnout vzdálený přístup na tomto PC <span class="note" translate="no">(${esc(v.pc)})</span></label>
+        <div class="mob-row"><label for="s-mob-port">Port</label><input id="s-mob-port" type="number" min="1024" max="65535" value="${v.port}" style="width:110px"></div>
+        <div class="mob-row"><label>${v.hasPass ? "Změnit heslo" : "Heslo pro telefon"}</label>
+          <input type="password" id="s-mob-p1" placeholder="${v.hasPass ? "Nové heslo (aspoň 6 znaků)" : "Heslo (aspoň 6 znaků)"}" autocomplete="new-password">
+          <input type="password" id="s-mob-p2" placeholder="Znovu heslo" autocomplete="new-password">
+          <button class="ghost" id="s-mob-pass">${v.hasPass ? "Změnit" : "Nastavit"}</button></div>
+        ${v.hasPass ? "" : `<span class="note">Nejdřív nastav heslo – pak jde vzdálený přístup zapnout.</span>`}
+        ${v.error ? `<p class="bwarn">Port ${v.port} nejde otevřít: ${esc(v.error)}</p>` : ""}
+        ${v.running ? `<div class="mob-urls"><span class="note">Běží. V telefonu (připojeném do místní sítě nebo VPN) otevři:</span>
+          ${(v.urls || []).map((u, i) => `<div class="mob-url"><code translate="no">${esc(u)}</code><button class="link" data-qr="${i}">QR kód</button><img data-qri="${i}" alt="" hidden></div>`).join("") || `<span class="note">Nenašel jsem adresu v místní síti.</span>`}
+          <span class="note">V telefonu pak „Přidat na plochu“ – Leonzilla bude mít ikonu jako aplikace.</span></div>` : ""}
+        ${(v.sessions || []).length ? `<div class="mob-sess"><span class="note">Přihlášená zařízení:</span>
+          <ul>${v.sessions.map((x) => `<li><b translate="no">${esc(x.name)}</b> <span class="note" translate="no">${esc(x.ip || "")}</span> <span class="note">· naposledy ${esc(fmtWhen(x.lastSeen))}</span></li>`).join("")}</ul>
+          <button class="ghost small" id="s-mob-out">Odhlásit všechna zařízení</button></div>` : ""}
+        <p class="note">Jen pro místní síť nebo VPN: Leonzilla pustí jen adresy z místní sítě a VPN, ale <b>port nepřesměrovávej na routeru do internetu</b> (spojení není HTTPS, šifruje ho VPN). Při prvním zapnutí se Windows zeptají na firewall – zaškrtni jen <i>Soukromé sítě</i>.</p>`;
+      qrURLs.length = 0; qrURLs.push(...(v.urls || []));
+      const post = async (body) => { try { drawMobile(await api("POST", "/api/mobile", body)); } catch (e) { toast(e.message, true); api("GET", "/api/mobile").then(drawMobile).catch(() => {}); } };
+      $("#s-mob-on", el).onchange = (e) => post({ enabled: e.target.checked });
+      $("#s-mob-port", el).onchange = (e) => post({ port: +e.target.value });
+      $("#s-mob-pass", el).onclick = () => {
+        const p1 = $("#s-mob-p1", el).value, p2 = $("#s-mob-p2", el).value;
+        if (p1.length < 6) return toast("Heslo pro vzdálený přístup musí mít aspoň 6 znaků", true);
+        if (p1 !== p2) return toast("Hesla se neshodují", true);
+        post({ password: p1 }).then(() => toast(v.hasPass ? "Heslo změněno – všechna zařízení se musí přihlásit znovu" : "Heslo nastaveno – teď můžeš vzdálený přístup zapnout"));
+      };
+      $("#s-mob-out", el)?.addEventListener("click", async () => { try { drawMobile(await api("POST", "/api/mobile/logoutall")); toast("Všechna zařízení odhlášena"); } catch (e) { toast(e.message, true); } });
+      el.querySelectorAll("[data-qr]").forEach((b) => (b.onclick = async () => {
+        const img = el.querySelector(`[data-qri="${b.dataset.qr}"]`);
+        if (!img.hidden) { img.hidden = true; return; }
+        try {
+          const r = await fetch(`/api/mobile/qr?url=${encodeURIComponent(qrURLs[+b.dataset.qr])}`, { headers: { "X-Token": TOKEN } });
+          if (!r.ok) throw new Error(`Chyba ${r.status}`);
+          img.src = URL.createObjectURL(await r.blob()); img.hidden = false;
+        } catch (e) { toast(e.message, true); }
+      }));
+    };
+    api("GET", "/api/mobile").then(drawMobile).catch((e) => { const el = $("#s-mob-body", box); if (el) el.innerHTML = `<span class="note">${esc(e.message)}</span>`; });
     $("#s-master", box).onclick = async () => {
       const nw = $("#s-new", box).value, nw2 = $("#s-new2", box).value;
       if (nw !== nw2) return toast("Nová hesla se neshodují", true);
@@ -3421,6 +3490,70 @@ function modal(html, bind, wide = false) {
   if (!box.contains(document.activeElement)) box.querySelector("input, button.primary, button.sync, button")?.focus();
 }
 
+/* ------------------------------------------------------------------ remote access (phone) */
+
+function remoteOnly() { toast("Z mobilu jde jen spouštět – nastavení je jen na PC", true); }
+
+async function mobileBoot() {
+  try {
+    const me = await (await fetch("/api/mobile/me", { cache: "no-store" })).json();
+    S.pc = me.pc || ""; S.version = me.version || "";
+    if (!me.loggedIn) return renderLogin();
+  } catch (e) { return renderLogin(e.message); }
+  load();
+}
+
+function renderLogin(err = "") {
+  $("#tabs").innerHTML = "";
+  $("#main").innerHTML = `
+    <div class="empty mlogin">
+      <svg class="mark"><use href="#i-mark"/></svg>
+      <h1>Leonzilla</h1>
+      <p>Vzdálený přístup${S.pc ? ` · <b translate="no">${esc(S.pc)}</b>` : ""}</p>
+      <form class="lock-form" id="m-login">
+        <input type="password" id="m-pass" placeholder="Heslo pro vzdálený přístup" autocomplete="current-password">
+        <button class="primary">Přihlásit</button>
+      </form>
+      ${err ? `<p class="note err">${esc(err)}</p>` : ""}
+      <p class="note">Heslo se nastavuje na PC: Nastavení aplikace → Obecné → Vzdálený přístup.</p>
+    </div>`;
+  $("#m-pass").focus();
+  $("#m-login").onsubmit = async (e) => {
+    e.preventDefault();
+    const ua = navigator.userAgent;
+    const dev = (/Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iPhone / iPad" : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "Prohlížeč")
+      + " · " + (/Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "");
+    try {
+      const r = await fetch("/api/mobile/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: $("#m-pass").value, device: dev.replace(/ · $/, "") }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `Chyba ${r.status}`);
+      load();
+    } catch (er) { toast(er.message, true); $("#m-pass").select(); }
+  };
+}
+
+function openRemoteMenu() {
+  modal(`
+    <div class="modal-h"><h3>Vzdálený přístup</h3><p>Leonzilla ${esc(S.version)} na PC <b translate="no">${esc(S.pc)}</b></p></div>
+    <div class="modal-b set-grid">
+      <p class="note" style="margin:0">Z mobilu spouštíš, co mají karty nastavené (synchronizace, buildy, skripty, zálohy, GitHub, FW), a sleduješ průběh a log. Karty a nastavení se upravují jen na PC.</p>
+      <div class="f"><span class="lab">Vzhled</span>
+        <div class="seg" id="r-theme">${[["auto", "Podle telefonu"], ["light", "Světlý"], ["dark", "Tmavý"]].map(([k, v]) => `<button data-v="${k}" aria-pressed="${(remoteTheme() || "auto") === k}">${v}</button>`).join("")}</div></div>
+    </div>
+    <div class="modal-f"><button class="ghost" id="r-logout">Odhlásit toto zařízení</button><button class="primary" data-close>Hotovo</button></div>`, (box, close) => {
+    box.querySelectorAll("#r-theme button").forEach((b) => (b.onclick = () => {
+      try { localStorage.setItem("lz-theme", b.dataset.v); } catch {}
+      applyTheme();
+      box.querySelectorAll("#r-theme button").forEach((x) => x.setAttribute("aria-pressed", x === b));
+    }));
+    $("#r-logout", box).onclick = async () => {
+      try { await fetch("/api/mobile/logout", { method: "POST" }); } catch {}
+      close(); renderLogin();
+    };
+  });
+}
+function remoteTheme() { try { return localStorage.getItem("lz-theme") || ""; } catch { return ""; } }
+
 /* ------------------------------------------------------------------ boot */
 
 $("#btn-add-tab").onclick = addTab;
@@ -3442,7 +3575,35 @@ document.addEventListener("keydown", (e) => {
   if (e.ctrlKey && e.key.toLowerCase() === "w" && S.view === "card" && S.current && $("#overlay").hidden) { e.preventDefault(); closeTab(S.current); }
 });
 // keep-alive (used when running in a normal browser) + pick up config changes from other PCs (Dropbox)
-setInterval(() => api("POST", "/api/ping").catch(() => {}), 5000);
+setInterval(async () => {
+  if (S.locked) return;
+  try { pickUpJobs((await api("POST", "/api/ping")).jobs || {}); } catch {}
+}, REMOTE ? 3000 : 5000);
+// a job started from the other side (phone ↔ PC window): show its progress here too
+function pickUpJobs(jobs) {
+  let changed = false;
+  for (const [id, ph] of Object.entries(jobs)) {
+    if (ph.startsWith("done:")) { // ended – refresh "last sync / build …" once (also when it ran too short to be seen)
+      S.seenDone ||= {};
+      if (S.seenDone[id] !== ph && !running(id)) { S.seenDone[id] = ph; if (S.seenInit) refreshLast(id); }
+      continue;
+    }
+    if (running(id) || !S.tabs.some((t) => t.id === id)) continue;
+    S.jobs[id] = ph; S.jobData[id] = null; changed = true;
+    if (S.view === "card" && id === S.current && !editing(id)) watchJob(id, true); else bgKick();
+  }
+  if (changed) { renderTabs(); if (S.view === "overview") Object.keys(jobs).forEach(updateTile); }
+  S.seenInit = true;
+}
+async function refreshLast(id) {
+  try {
+    const st = await api("GET", "/api/state");
+    const f = st.tabs.find((x) => x.id === id), t = S.tabs.find((x) => x.id === id);
+    if (!f || !t || editing(id)) return;
+    Object.assign(t, { lastSync: f.lastSync, lastBuild: f.lastBuild, lastBackup: f.lastBackup, lastGit: f.lastGit });
+    if (S.view === "overview") updateTile(id); else if (id === S.current) render();
+  } catch {}
+}
 // Picks up changes made on another PC (Dropbox). Never while a card is being edited or a request
 // (folder / file dialog …) is running – the answer would land in a card object that was just replaced.
 window.addEventListener("focus", async () => {
@@ -3466,4 +3627,4 @@ function canonJSON(v) {
   return JSON.stringify(norm(v));
 }
 
-load();
+if (REMOTE) mobileBoot(); else load();

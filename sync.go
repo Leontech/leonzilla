@@ -264,6 +264,22 @@ func (r *Runner) Get(tabID string) *Job {
 	return r.jobs[tabID]
 }
 
+// Phases returns the phase of every card job that runs or ended in the last minute ("done:<end time>"),
+// so the window and the phone see jobs started on the other side – also short ones.
+func (r *Runner) Phases() map[string]string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := map[string]string{}
+	for id, j := range r.jobs {
+		if j.Phase != "done" {
+			out[id] = j.Phase
+		} else if !j.Ended.IsZero() && time.Since(j.Ended) < time.Minute {
+			out[id] = "done:" + j.Ended.Format(time.RFC3339Nano)
+		}
+	}
+	return out
+}
+
 func (r *Runner) AnyRunning() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
