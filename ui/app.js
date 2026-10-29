@@ -434,10 +434,14 @@ function renderLock() {
   $("#main").innerHTML = `
     <div class="empty">
       <svg class="mark"><use href="#i-lock"/></svg>
+      ${REMOTE ? `<p class="mstep">Krok 2 ze 2</p>` : ""}
       <h1>Leonzilla je zamčená</h1>
-      <p>Hesla k serverům jsou zašifrovaná hlavním heslem.</p>
+      ${REMOTE
+        ? `<p class="mwhich">Přihlášení k vzdálenému přístupu je hotové ✓. Teď zadej <b>hlavní heslo Leonzilly</b> – to, kterým ji odemykáš na PC po spuštění. Ne heslo pro vzdálený přístup.</p>
+           <p class="note">Hlavní heslo se zadává po každém spuštění Leonzilly. Odemčená pak zůstane, dokud ji na PC nezavřeš.</p>`
+        : `<p>Hesla k serverům jsou zašifrovaná hlavním heslem.</p>`}
       <form class="lock-form" id="lock-form">
-        <input type="password" id="lock-pass" placeholder="Hlavní heslo" autofocus>
+        <input type="password" id="lock-pass" placeholder="${REMOTE ? "Hlavní heslo Leonzilly" : "Hlavní heslo"}" autofocus>
         <button class="primary">Odemknout</button>
       </form>
     </div>`;
@@ -3131,6 +3135,7 @@ const SET_TABS = [
   ["general", "Obecné"],
   ["groups", "Skupiny"],
   ["builds", "Buildy (RAD Studio)"],
+  ["mobile", "Vzdálený přístup"],
 ];
 function setTabNote(k) {
   const s = S.settings;
@@ -3138,13 +3143,20 @@ function setTabNote(k) {
     case "general": return "";
     case "groups": return groups().length ? plural(groups().length, "skupina", "skupiny", "skupin") : "";
     case "builds": return builds().length ? plural(builds().length, "build", "buildy", "buildů") : "";
+    case "mobile": {
+      const v = S.mobileView;
+      if (!v || !v.enabled) return "";
+      if (!v.running) return "nejde spustit";
+      const n = (v.sessions || []).length;
+      return n ? "zapnuto · " + plural(n, "zařízení", "zařízení", "zařízení") : "zapnuto";
+    }
   }
   return "";
 }
 function setTabsHtml(active) {
   return SET_TABS.map(([k, name]) => {
     const note = setTabNote(k);
-    const sub = k === "general" ? (S.settings.master ? "hlavní heslo nastavené" : "vzhled, jazyk, heslo, více PC") : note || "–";
+    const sub = k === "general" ? (S.settings.master ? "hlavní heslo nastavené" : "vzhled, jazyk, heslo, více PC") : note || (k === "mobile" ? "vypnuto" : "–");
     return `<button type="button" class="etab${note ? " set" : ""}${k === "general" ? " info" : ""}${k === active ? " on" : ""}" data-etab="${k}" role="tab" aria-selected="${k === active}"><span class="etab-dot" aria-hidden="true"></span><span class="etab-name">${name}</span><span class="etab-note">${esc(sub)}</span></button>`;
   }).join("");
 }
@@ -3154,7 +3166,7 @@ function openSettings(focus = false) {
   const focusGroups = focus === true || focus === "groups";
   const s = S.settings;
   // App settings in tabs like the card settings; groups / builds open their tab directly
-  const stab = (S.setTab = focusGroups ? "groups" : focus === "builds" ? "builds" : SET_TABS.some(([k]) => k === S.setTab) ? S.setTab : "general");
+  const stab = (S.setTab = focusGroups ? "groups" : focus === "builds" ? "builds" : focus === "mobile" ? "mobile" : SET_TABS.some(([k]) => k === S.setTab) ? S.setTab : "general");
   modal(`
     <div class="modal-h"><h3>Nastavení aplikace</h3><p>Leonzilla ${esc(S.version)} · <button class="link" id="s-about" style="padding:0">O aplikaci</button> · data: <span style="font-family:var(--mono);font-size:12px" translate="no">${esc(S.dataDir)}</span></p></div>
     <div class="modal-b">
@@ -3188,9 +3200,6 @@ function openSettings(focus = false) {
         <div class="xpw" id="s-xpwbox" hidden><input type="password" id="s-xp1" placeholder="Heslo k exportu" autocomplete="new-password"><input type="password" id="s-xp2" placeholder="Znovu heslo k exportu" autocomplete="new-password"></div>
         <div class="row-btns" style="margin-top:6px"><button class="ghost" id="s-xgo">${icon("up")}Exportovat</button><button class="ghost" id="s-imp">${icon("file")}Importovat…</button></div>
         <span class="note" id="s-xnote"></span></div>
-      <div class="f" id="s-mobile"><span class="lab">Vzdálený přístup (z mobilu)</span>
-        <span class="note">Spouštění karet z telefonu přes místní síť nebo VPN (např. WireGuard do domácí sítě). Z mobilu jde jen <b>spouštět</b> – karty a nastavení se tam měnit nedají. Zapíná se zvlášť na každém PC.</span>
-        <div id="s-mob-body"><span class="note">Načítám…</span></div></div>
       <div class="f" id="s-pcs"><span class="lab">Více počítačů (Dropbox)</span>
         <span class="note"><b>Společné pro všechna PC</b> (<code>Leonzilla_data\\config.json</code>): karty a jejich pořadí, skupiny, servery a hesla, buildy a kompilátor, Dropbox u karet, jazyk, vzhled, souběžné nahrávání, hlavní heslo; také stav nahrání a logy.<br><b>Jen tento PC</b>: sbalené skupiny, otevřené záložky a poslední karta (<code>Leonzilla_data\\ui\\${esc(S.pc || "PC")}.json</code>), velikost a poloha okna (<code>%LOCALAPPDATA%\\Leonzilla</code>) a spouštění s Windows.</span></div>
       </div>
@@ -3200,6 +3209,12 @@ function openSettings(focus = false) {
         <ul class="glist" id="s-groups"></ul>
         <form class="gadd" id="s-gadd"><input id="s-gname" placeholder="Název nové skupiny, např. Klienti" maxlength="60"><button class="ghost">${icon("plus")}Přidat skupinu</button></form>
       </div>
+      </div>
+      <div class="set-grid stab-pane" data-spane="mobile"${stab === "mobile" ? "" : " hidden"}>
+      <div class="f" id="s-mobile"><span class="lab">Vzdálený přístup (z mobilu)</span>
+        <span class="note">Spouštění karet z telefonu přes místní síť nebo VPN (např. WireGuard do domácí sítě). Z mobilu jde jen <b>spouštět</b> – karty a nastavení se tam měnit nedají. Zapíná se zvlášť na každém PC.</span>
+        <span class="note">Jde to z jakéhokoli zařízení s prohlížečem – telefon, tablet, Mac, jiné PC – v domácí síti nebo přes VPN.${s.master ? " Leonzilla má hlavní heslo, takže je po každém spuštění zamčená: po přihlášení ji v telefonu odemkneš hlavním heslem." : ""}</span>
+        <div id="s-mob-body"><span class="note">Načítám…</span></div></div>
       </div>
       <div class="set-grid stab-pane" data-spane="builds"${stab === "builds" ? "" : " hidden"}>
       <div class="f" id="s-builds-box"><span class="lab">Buildy (RAD Studio / TMS WEB Core)</span>
@@ -3362,6 +3377,8 @@ function openSettings(focus = false) {
     const drawMobile = (v) => {
       const el = $("#s-mob-body", box);
       if (!el) return;
+      S.mobileView = v;
+      refreshSetTabs();
       el.innerHTML = `
         <label class="check"><input type="checkbox" id="s-mob-on" ${v.enabled ? "checked" : ""} ${v.hasPass ? "" : "disabled"}>Zapnout vzdálený přístup na tomto PC <span class="note" translate="no">(${esc(v.pc)})</span></label>
         <div class="mob-row"><label for="s-mob-port">Port</label><input id="s-mob-port" type="number" min="1024" max="65535" value="${v.port}" style="width:110px"></div>
@@ -3372,7 +3389,7 @@ function openSettings(focus = false) {
         ${v.hasPass ? "" : `<span class="note">Nejdřív nastav heslo – pak jde vzdálený přístup zapnout.</span>`}
         ${v.error ? `<p class="bwarn">Port ${v.port} nejde otevřít: ${esc(v.error)}</p>` : ""}
         ${v.running ? `<div class="mob-urls"><span class="note">Běží. V telefonu (připojeném do místní sítě nebo VPN) otevři:</span>
-          ${(v.urls || []).map((u, i) => `<div class="mob-url"><code translate="no">${esc(u)}</code><button class="link" data-qr="${i}">QR kód</button><img data-qri="${i}" alt="" hidden></div>`).join("") || `<span class="note">Nenašel jsem adresu v místní síti.</span>`}
+          ${(v.urls || []).map((u, i) => `<div class="mob-url"><code translate="no">${esc(u)}</code><button class="link" data-qr="${i}">QR kód</button><div class="mob-qr"><img data-qri="${i}" alt="" hidden></div></div>`).join("") || `<span class="note">Nenašel jsem adresu v místní síti.</span>`}
           <span class="note">V telefonu pak „Přidat na plochu“ – Leonzilla bude mít ikonu jako aplikace.</span></div>` : ""}
         ${(v.sessions || []).length ? `<div class="mob-sess"><span class="note">Přihlášená zařízení:</span>
           <ul>${v.sessions.map((x) => `<li><b translate="no">${esc(x.name)}</b> <span class="note" translate="no">${esc(x.ip || "")}</span> <span class="note">· naposledy ${esc(fmtWhen(x.lastSeen))}</span></li>`).join("")}</ul>
@@ -3494,28 +3511,45 @@ function modal(html, bind, wide = false) {
 
 function remoteOnly() { toast("Z mobilu jde jen spouštět – nastavení je jen na PC", true); }
 
+// fetch with a time limit: when Leonzilla (or the PC) is gone, the Windows firewall drops the packets silently
+// and the browser would wait for minutes without any message
+async function fetchT(url, opts = {}, ms = 8000) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ac.signal }); } finally { clearTimeout(t); }
+}
+
 async function mobileBoot() {
   try {
-    const me = await (await fetch("/api/mobile/me", { cache: "no-store" })).json();
-    S.pc = me.pc || ""; S.version = me.version || "";
+    const me = await (await fetchT("/api/mobile/me", { cache: "no-store" })).json();
+    S.pc = me.pc || ""; S.version = me.version || ""; S.remoteMaster = !!me.master && !!me.locked; // a second step only while Leonzilla on the PC is locked
     if (!me.loggedIn) return renderLogin();
-  } catch (e) { return renderLogin(e.message); }
+  } catch (e) { return renderLogin("Leonzilla na PC neodpovídá – běží? Je PC zapnuté a jsi v domácí síti nebo na VPN?"); }
   load();
 }
 
 function renderLogin(err = "") {
+  // background requests (ping, refresh) also end up here with 401 – never rebuild the form under the typing user
+  if ($("#m-login")) {
+    const m = $("#m-err");
+    if (err && m) { m.textContent = err; m.hidden = false; }
+    return;
+  }
+  $("#dbx-chip")?.classList.add("off");
   $("#tabs").innerHTML = "";
   $("#main").innerHTML = `
     <div class="empty mlogin">
       <svg class="mark"><use href="#i-mark"/></svg>
       <h1>Leonzilla</h1>
       <p>Vzdálený přístup${S.pc ? ` · <b translate="no">${esc(S.pc)}</b>` : ""}</p>
+      ${S.remoteMaster ? `<p class="mstep">Krok 1 ze 2</p>` : ""}
+      <p class="mwhich">Zadej <b>heslo pro vzdálený přístup</b> – to, které jsi nastavil na PC v Nastavení aplikace → Vzdálený přístup.${S.remoteMaster ? " Hlavní heslo Leonzilly přijde na řadu až v dalším kroku." : ""}</p>
       <form class="lock-form" id="m-login">
         <input type="password" id="m-pass" placeholder="Heslo pro vzdálený přístup" autocomplete="current-password">
         <button class="primary">Přihlásit</button>
       </form>
-      ${err ? `<p class="note err">${esc(err)}</p>` : ""}
-      <p class="note">Heslo se nastavuje na PC: Nastavení aplikace → Obecné → Vzdálený přístup.</p>
+      <p class="note err" id="m-err"${err ? "" : " hidden"}>${esc(err)}</p>
+      <p class="note">Telefon si přihlášení pamatuje – příště tenhle krok odpadne.</p>
     </div>`;
   $("#m-pass").focus();
   $("#m-login").onsubmit = async (e) => {
@@ -3523,12 +3557,27 @@ function renderLogin(err = "") {
     const ua = navigator.userAgent;
     const dev = (/Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iPhone / iPad" : /Windows/.test(ua) ? "Windows" : /Mac/.test(ua) ? "Mac" : "Prohlížeč")
       + " · " + (/Edg\//.test(ua) ? "Edge" : /Firefox\//.test(ua) ? "Firefox" : /Chrome\//.test(ua) ? "Chrome" : /Safari\//.test(ua) ? "Safari" : "");
+    const btn = $("#m-login button"), m0 = $("#m-err");
+    btn.disabled = true; btn.textContent = "Přihlašuji…";
+    if (m0) m0.hidden = true;
     try {
-      const r = await fetch("/api/mobile/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: $("#m-pass").value, device: dev.replace(/ · $/, "") }) });
+      let r;
+      try {
+        r = await fetchT("/api/mobile/login", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ password: $("#m-pass").value, device: dev.replace(/ · $/, "") }) });
+      } catch {
+        throw new Error("Leonzilla na PC neodpovídá – běží? Je PC zapnuté a jsi v domácí síti nebo na VPN?");
+      }
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || `Chyba ${r.status}`);
       load();
-    } catch (er) { toast(er.message, true); $("#m-pass").select(); }
+    } catch (er) {
+      const m = $("#m-err");
+      if (m) { m.textContent = er.message; m.hidden = false; }
+      toast(er.message, true);
+      $("#m-pass").focus();
+    } finally {
+      if (btn.isConnected) { btn.disabled = false; btn.textContent = "Přihlásit"; }
+    }
   };
 }
 
@@ -3574,9 +3623,40 @@ document.addEventListener("keydown", (e) => {
   }
   if (e.ctrlKey && e.key.toLowerCase() === "w" && S.view === "card" && S.current && $("#overlay").hidden) { e.preventDefault(); closeTab(S.current); }
 });
+// the phone: Dropbox status of the PC – a band under the top bar, from the tooltip of the Dropbox tray icon.
+// Windows gives the full tooltip ("Up to date", "Syncing 12 files" …) only sometimes (e.g. while the mouse is over the
+// icon); otherwise only "Dropbox 278.3.3892". So: a clear state only when the text says it, otherwise a neutral "running".
+const DBX_OK = /up to date|aktu[aá]ln|synchronizov[aá]no|à jour|aktuell|al día|aggiornat|actualizad|bijgewerkt|zsynchronizowan/i;
+const DBX_BUSY = /sync|synchroniz|upload|nahr[aá]v|download|stahuj|index|\d+\s+(files?|soubor)|zb[yý]v[aá]|remaining|prepar|připra/i;
+function dbxChip(st) {
+  const el = $("#dbx-chip");
+  if (!el) return;
+  const set = (cls, txt, raw) => {
+    el.className = "dbx-band " + cls;
+    el.querySelector(".dbx-txt").textContent = "Dropbox: " + txt;
+    el.querySelector(".dbx-raw").textContent = raw ? tr("Popisek ikony na PC:") + " " + raw : "";
+  };
+  if (st && !st.running && st.stoppedForBuild) return set("", tr("vypnutý kvůli buildu"), "");
+  if (!st || !st.running) { el.className = "dbx-band off"; return; }
+  const raw = (st.tray || "").replace(/\s*\n\s*/g, " / ");
+  if (st.paused) return set("warn", tr("pozastaveno"), raw);
+  if (DBX_OK.test(raw)) return set("ok", tr("aktuální"), raw);
+  if (DBX_BUSY.test(raw.replace(/^dropbox\s*[\d.]*/i, ""))) return set("busy", tr("synchronizuje…"), raw);
+  set("", tr("běží"), raw);
+}
+async function pollDropbox() {
+  if (!REMOTE || S.locked || $("#m-login") || document.hidden) return;
+  try { dbxChip(await api("GET", "/api/dropbox?cached=1")); } catch { dbxChip(null); }
+}
+if (REMOTE) {
+  $("#dbx-chip").hidden = false; $("#dbx-chip").className = "dbx-band off"; // keeps its grid row (#app), height 0 until there is a state
+  setInterval(pollDropbox, 15000); setTimeout(pollDropbox, 2000); document.addEventListener("visibilitychange", pollDropbox);
+  $("#dbx-chip").onclick = () => { const r = $("#dbx-chip .dbx-raw"); if (r.textContent) r.hidden = !r.hidden; }; // tap = the exact text from the PC
+}
+
 // keep-alive (used when running in a normal browser) + pick up config changes from other PCs (Dropbox)
 setInterval(async () => {
-  if (S.locked) return;
+  if (S.locked || (REMOTE && $("#m-login"))) return; // not signed in on the phone yet – nothing to ask (and no 401 that would rebuild the form)
   try { pickUpJobs((await api("POST", "/api/ping")).jobs || {}); } catch {}
 }, REMOTE ? 3000 : 5000);
 // a job started from the other side (phone ↔ PC window): show its progress here too

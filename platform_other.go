@@ -60,6 +60,9 @@ func dropboxStatus() DropboxStatus {
 	if f == "" {
 		return DropboxStatus{}
 	}
+	if f == "stopped" {
+		return DropboxStatus{StoppedForBuild: true}
+	}
 	st := DropboxStatus{Running: true}
 	switch {
 	case f == "paused":

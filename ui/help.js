@@ -196,7 +196,7 @@ function helpHTMLcs() {
         <h2><span class="hp-ic sp">${icon("server")}</span>Vzdálený přístup z mobilu</h2>
         <ul class="hp-list">
           <li><b>K čemu:</b> spustit kartu z telefonu, když nejsi u PC – synchronizaci, build, skript, zálohu, GitHub, FW build. Telefon musí být v <b>místní síti nebo ve VPN</b> do ní (např. WireGuard).</li>
-          <li><b>Zapnutí</b> (na PC): <i>Nastavení aplikace → Obecné → Vzdálený přístup</i> – nastav heslo pro telefon (aspoň 6 znaků), zapni a případně změň port (výchozí 8765). Zapíná se zvlášť na každém PC. Windows se při prvním zapnutí zeptají na firewall – zaškrtni jen <i>Soukromé sítě</i>.</li>
+          <li><b>Zapnutí</b> (na PC): <i>Nastavení aplikace → Vzdálený přístup</i> – nastav heslo pro telefon (aspoň 6 znaků), zapni a případně změň port (výchozí 8765). Zapíná se zvlášť na každém PC. Windows se při prvním zapnutí zeptají na firewall – zaškrtni jen <i>Soukromé sítě</i>.</li>
           <li><b>Telefon:</b> otevři zobrazenou adresu (nebo naskenuj QR kód), přihlas se heslem a dej „Přidat na plochu“ – Leonzilla bude mít ikonu jako aplikace. Přihlášení si telefon pamatuje.</li>
           <li><b>Z mobilu jde jen spouštět</b> to, co mají karty nastavené, a sledovat průběh a log. Karty, buildy ani nastavení se tam měnit nedají a nic se na PC neotevírá (složky, soubory, terminál).</li>
           <li><b>Bezpečnost:</b> Leonzilla pustí jen adresy z místní sítě a VPN; heslo je uložené jen jako otisk; po 5 špatných pokusech se adresa na 10 minut zablokuje. Spojení není HTTPS – šifruje ho VPN, proto <b>port nikdy nepřesměrovávej na routeru do internetu</b>. Přihlášená zařízení vidíš v nastavení a jedním tlačítkem je odhlásíš; změna hesla odhlásí všechna.</li>

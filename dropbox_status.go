@@ -1,6 +1,10 @@
 package main
 
-import "regexp"
+import (
+	"regexp"
+	"sync"
+	"time"
+)
 
 // DropboxStatus – for "Watch Dropbox before a build" (GET /api/dropbox)
 type DropboxStatus struct {
@@ -8,6 +12,8 @@ type DropboxStatus struct {
 	Known   bool   `json:"known"`  // pause state could be read (tray icon tooltip)
 	Paused  bool   `json:"paused"` // only meaningful when Known
 	Tray    string `json:"tray,omitempty"`
+	// Leonzilla itself stopped Dropbox for a build and starts it again afterwards (the phone shows it instead of nothing)
+	StoppedForBuild bool `json:"stoppedForBuild,omitempty"`
 }
 
 // texts Dropbox shows in the tray tooltip while syncing is paused, in the languages of the Dropbox app:
@@ -15,3 +21,19 @@ type DropboxStatus struct {
 // uk призупинено, fi keskeytetty, tr duraklatıldı, id/ms dijeda, ja 一時停止, zh 暂停/暫停, ko 일시 중지, it sospesa, th หยุดชั่วคราว
 // If the language is not covered, the dialog still lets the user continue (the check is only a reminder).
 var dropboxPausedRe = regexp.MustCompile(`(?i)pozastav|paus|pauz|angehalten|wstrzyma|призупин|keskeyt|duraklat|dijeda|一時停止|暂停|暫停|일시\s?중지|sospes|หยุดชั่วคราว`)
+
+var dbxCache struct {
+	sync.Mutex
+	at time.Time
+	st DropboxStatus
+}
+
+// dropboxStatusCached: the status at most maxAge old (the phone asks every few seconds, several phones at once).
+func dropboxStatusCached(maxAge time.Duration) DropboxStatus {
+	dbxCache.Lock()
+	defer dbxCache.Unlock()
+	if time.Since(dbxCache.at) > maxAge {
+		dbxCache.st, dbxCache.at = dropboxStatus(), time.Now()
+	}
+	return dbxCache.st
+}

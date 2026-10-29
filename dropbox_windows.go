@@ -207,6 +207,8 @@ func dropboxStatus() DropboxStatus {
 	pids, _ := dropboxPIDs()
 	st := DropboxStatus{Running: len(pids) > 0}
 	if !st.Running {
+		_, err := os.Stat(dropboxMarker())
+		st.StoppedForBuild = err == nil
 		return st
 	}
 	st.Tray = dropboxTrayText()

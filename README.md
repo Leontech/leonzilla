@@ -114,7 +114,7 @@ The guide is built in (**?** button or **F1**) and also included as a PDF: [Engl
 
 ## Remote access from a phone
 
-Not at the PC, but the build or the upload should run now? Turn on *App settings → General → Remote access* on the PC, set a password for the phone and open the shown address on the phone (there is a QR code). The phone gets the same tiles, laid out for a small screen – add it to the home screen and it looks like an app.
+Not at the PC, but the build or the upload should run now? Turn on *App settings → Remote access* on the PC, set a password for the phone and open the shown address on the phone (there is a QR code). The phone gets the same tiles, laid out for a small screen – add it to the home screen and it looks like an app.
 
 - **Only running.** From the phone you start what the cards already have – synchronize, builds, own scripts (with the choice of script and parameters), switches for one build, backups, GitHub, FW build and flash – and watch the progress and the log. Cards, builds and settings can only be changed on the PC, and nothing is opened on the PC (folders, files, terminal). The server enforces this, it is not just hidden buttons.
 - **Local network or VPN only.** Meant for your home network or a VPN into it (WireGuard, Tailscale …). Leonzilla accepts only private and VPN addresses – **never forward the port on your router to the internet**: the connection is plain HTTP, the VPN encrypts it.

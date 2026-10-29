@@ -815,7 +815,8 @@ button.mon-btn.live { box-shadow: 0 0 0 3px color-mix(in srgb, var(--fw) 35%, tr
 .etab-pane { min-height: calc(100vh - 150px); }
 @media (max-width: 900px) { .etabs { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
 /* App settings tabs (same look as the card settings tabs) */
-.etabs.stabs { position: sticky; top: -12px; z-index: 3; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0 0 16px; }
+.etabs.stabs { position: sticky; top: -12px; z-index: 3; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 16px; }
+@media (max-width: 640px) { .etabs.stabs { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .etab.info { color: var(--ink); }
 .etab.info .etab-dot { border-color: var(--muted); }
 .stab-pane { min-height: 200px; }
@@ -855,7 +856,8 @@ button.mon-btn.live { box-shadow: 0 0 0 3px color-mix(in srgb, var(--fw) 35%, tr
 #s-mobile .mob-urls, #s-mobile .mob-sess { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
 #s-mobile .mob-url { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
 #s-mobile .mob-url code { font: 14px var(--mono); padding: 4px 8px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--line); }
-#s-mobile .mob-url img { flex-basis: 100%; width: 180px; height: 180px; image-rendering: pixelated; background: #fff; padding: 6px; border-radius: 8px; }
+#s-mobile .mob-qr { flex-basis: 100%; }  /* the QR code on its own line – flex-basis on the img itself stretched it */
+#s-mobile .mob-qr img { display: block; width: 200px; height: 200px; box-sizing: content-box; image-rendering: pixelated; background: #fff; padding: 6px; border-radius: 8px; }
 #s-mobile .mob-sess ul { margin: 0; padding-left: 18px; }
 #s-mobile .mob-sess button { align-self: flex-start; }
 /* the phone: nothing that changes settings or opens something on the PC */
@@ -892,3 +894,20 @@ button.mon-btn.live { box-shadow: 0 0 0 3px color-mix(in srgb, var(--fw) 35%, tr
   .chip.tog { height: 30px; font-size: 13px; }
   .activity { max-height: 45vh; }
 }
+
+/* remote sign-in: which password is which */
+.empty .mstep { margin: 0 0 4px; font: 600 12px var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--spruce); }
+.empty .mwhich { max-width: 420px; margin: 4px auto 12px; color: var(--ink); line-height: 1.45; }
+
+/* the phone: Dropbox status of the PC – a thin band under the top bar */
+.dbx-band { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 5px 14px; font-size: 13px; color: var(--muted);
+  background: var(--surface); border-bottom: 1px solid var(--line); cursor: pointer; }
+.remote #app { grid-template-rows: auto auto 1fr auto; } /* header, Dropbox band, main, … */
+.dbx-band.off { padding: 0; border: 0; height: 0; overflow: hidden; }
+.dbx-band .dbx-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--faint); }
+.dbx-band.ok .dbx-dot { background: var(--spruce); }
+.dbx-band.busy .dbx-dot { background: var(--amber, #e0a100); animation: dbxpulse 1.2s ease-in-out infinite; }
+.dbx-band.warn .dbx-dot { background: var(--danger, #c0392b); }
+.dbx-band .dbx-raw { flex-basis: 100%; font: 11.5px var(--mono); color: var(--faint); word-break: break-word; }
+@keyframes dbxpulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .dbx-band.busy .dbx-dot { animation: none; } }

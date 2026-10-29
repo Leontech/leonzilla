@@ -161,7 +161,13 @@ func (a *API) apiMux() *http.ServeMux {
 		})
 		api.HandleFunc("POST /api/localcheck", a.hLocalCheck)
 		api.HandleFunc("GET /api/git/info", a.hGitInfo)
-		api.HandleFunc("GET /api/dropbox", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, dropboxStatus()) })
+		api.HandleFunc("GET /api/dropbox", func(w http.ResponseWriter, r *http.Request) {
+			if r.URL.Query().Get("cached") == "1" { // the phone's status chip: reading the tray icon takes ~1 s (PowerShell)
+				writeJSON(w, dropboxStatusCached(10*time.Second))
+				return
+			}
+			writeJSON(w, dropboxStatus())
+		})
 		api.HandleFunc("GET /api/serialports", func(w http.ResponseWriter, r *http.Request) { writeJSON(w, map[string]any{"ports": listSerialPorts()}) })
 		api.HandleFunc("POST /api/fw/detect", a.hFwDetect)
 		api.HandleFunc("POST /api/tabs/{id}/fw/run", a.hFwRun)
@@ -1146,4 +1152,11 @@ func (a *API) hBuildInspect(w http.ResponseWriter, r *http.Request) {
 func autostartOn() bool {
 	on, current := autostartState()
 	return on && current
+}
+
+// hasMaster: a master password is set (the phone tells the user there will be a second step).
+func (s *Store) hasMaster() bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.cfg.Settings.MasterSalt != ""
 }

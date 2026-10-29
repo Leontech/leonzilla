@@ -1,6 +1,6 @@
 package main
 
-// Remote access from a phone (App settings → General → Remote access).
+// Remote access from a phone (App settings → Remote access).
 //
 // A second HTTP server on a fixed port, off by default and switched on per PC (Leonzilla_data\mobile\<PC>.json – the
 // config.json is shared by all PCs through Dropbox, and only the chosen PC should listen). It is meant for the local
@@ -227,9 +227,21 @@ func (m *Mobile) hLogin(w http.ResponseWriter, r *http.Request) {
 	if name == "" {
 		name = T("Zařízení")
 	}
+	oldID := ""
+	if c, err := r.Cookie(mobileCookie); err == nil && c.Value != "" {
+		oldID = sha(c.Value)
+	}
 	m.mu.Lock()
 	delete(m.fails, ip)
-	m.conf.Sessions = append(m.conf.Sessions, &mobileSession{ID: sha(tok), Name: name, IP: ip, Created: time.Now(), LastSeen: time.Now()})
+	// the same phone / browser signing in again replaces its old session (one line per device in the list)
+	keep := m.conf.Sessions[:0]
+	for _, s := range m.conf.Sessions {
+		if s.ID == oldID || (s.Name == name && s.IP == ip) {
+			continue
+		}
+		keep = append(keep, s)
+	}
+	m.conf.Sessions = append(keep, &mobileSession{ID: sha(tok), Name: name, IP: ip, Created: time.Now(), LastSeen: time.Now()})
 	if len(m.conf.Sessions) > 20 { // the oldest devices fall out
 		sort.Slice(m.conf.Sessions, func(i, j int) bool { return m.conf.Sessions[i].LastSeen.After(m.conf.Sessions[j].LastSeen) })
 		m.conf.Sessions = m.conf.Sessions[:20]
@@ -339,7 +351,7 @@ func (m *Mobile) handler() http.Handler {
 	mux.HandleFunc("POST /api/mobile/logout", m.hLogout)
 	mux.HandleFunc("GET /api/mobile/me", func(w http.ResponseWriter, r *http.Request) {
 		s := m.session(r)
-		writeJSON(w, map[string]any{"loggedIn": s != nil, "pc": pcName(), "version": appVersion})
+		writeJSON(w, map[string]any{"loggedIn": s != nil, "pc": pcName(), "version": appVersion, "master": m.a.store.hasMaster(), "locked": m.a.store.isLocked()})
 	})
 	api := m.a.apiMux()
 	mux.Handle("/api/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

@@ -106,7 +106,7 @@ Návod je přímo v programu (tlačítko **?** nebo **F1**) a také jako PDF: [�
 
 ## Vzdálený přístup z mobilu
 
-Nejsi u PC, ale build nebo nahrání by se hodilo pustit hned? Na PC zapni *Nastavení aplikace → Obecné → Vzdálený přístup*, nastav heslo pro telefon a v telefonu otevři zobrazenou adresu (je k ní i QR kód). Telefon dostane stejné dlaždice upravené pro malý displej – po „Přidat na plochu“ vypadá jako aplikace.
+Nejsi u PC, ale build nebo nahrání by se hodilo pustit hned? Na PC zapni *Nastavení aplikace → Vzdálený přístup*, nastav heslo pro telefon a v telefonu otevři zobrazenou adresu (je k ní i QR kód). Telefon dostane stejné dlaždice upravené pro malý displej – po „Přidat na plochu“ vypadá jako aplikace.
 
 - **Jen spouštění.** Z telefonu spustíš, co karty už mají – synchronizaci, buildy, vlastní skripty (s výběrem skriptu a parametrů), přepínače pro jeden build, zálohy, GitHub, FW build a nahrání – a sleduješ průběh a log. Karty, buildy a nastavení se mění jen na PC a na PC se nic neotevírá (složky, soubory, terminál). Hlídá to server, nejde jen o skrytá tlačítka.
 - **Jen místní síť nebo VPN.** Určeno pro domácí síť nebo VPN do ní (WireGuard, Tailscale …). Leonzilla pustí jen soukromé adresy a adresy VPN – **port nikdy nepřesměrovávej na routeru do internetu**: spojení je obyčejné HTTP, šifruje ho až VPN.

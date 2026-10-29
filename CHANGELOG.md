@@ -3,13 +3,19 @@
 ## 1.11.20 – 2026-10-29
 
 **Remote access from a phone**
-- *App settings → General → Remote access*: run cards from your phone over the local network or a VPN (e.g. WireGuard). Off by default, switched on per PC; set a password, open the shown address on the phone (QR code), add it to the home screen.
+- *App settings → Remote access* (its own tab): run cards from your phone over the local network or a VPN (e.g. WireGuard). Off by default, switched on per PC; set a password, open the shown address on the phone (QR code), add it to the home screen.
 - **Only running** what the cards have: synchronize, builds, own scripts (choice of script and parameters), switches for one build, backups, GitHub, FW build and flash – with progress and log. No card or app settings from the phone, nothing is opened on the PC; the server enforces it.
 - **Security:** only private / VPN addresses are accepted (never forward the port to the internet – plain HTTP, the VPN encrypts it); the password is stored as a scrypt hash; per-device sessions that can be signed out; 10-minute block after 5 wrong attempts.
+- The phone shows the Dropbox status of the PC in the top bar (*Up to date*, syncing, paused – the text of the Dropbox tray icon, or *stopped for a build* while Leonzilla has it stopped), nothing when Dropbox does not run.
 - The tiles and dialogs are laid out for a phone (one column, bigger buttons, dialogs from the bottom).
 
 **Other**
 - A job started from the phone (or from the window) is shown on the other side too – progress while it runs, and the "last run" line when it is done.
+- Remote access has its own tab in the app settings (on / off, number of signed-in devices at a glance).
+- The phone sign-in tells clearly which password goes where: step 1 the remote-access password, step 2 (only with a master password) the Leonzilla master password. When Leonzilla on the PC does not respond, the phone says so instead of clearing the field.
+- The phone sign-in form no longer rebuilds itself every few seconds (it cleared the password being typed).
+- Signing in again from the same phone / browser replaces its old session – the list of signed-in devices shows each device once.
+- The QR code of the remote-access address is square again (it was stretched to the full width of the settings and phones could not read it).
 - Switching the tabs of the card settings or the app settings no longer moves the page or the window – the tabs stay where they are.
 - Leonzilla writes `%LOCALAPPDATA%\Leonzilla\activity.json` (a job is running, time of the last request from the phone), so another program – e.g. one that puts the PC to sleep after a remote session – knows Leonzilla is still in use.
 
