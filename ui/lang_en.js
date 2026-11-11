@@ -2,6 +2,14 @@
 /* Leonzilla – English UI texts (Czech text → English; "{}" = a value filled in by the code,
    {1} {2} … in the English text change the order). Missing keys: python tools/i18n_extract.py */
 I18N.add(/*BEGIN*/{
+ "Poznámka ke skriptu": "Note to the script",
+ "– nepovinné, co skript dělá; ukáže se při spuštění": "– optional, what the script does; shown when you run it",
+ "např. Build FW a nahrání do zařízení": "e.g. FW build and flashing the device",
+ "Vpravo k variantě můžeš napsat poznámku, co dělá.": "On the right of a variant you can write a note on what it does.",
+ "poznámka – co to dělá": "note – what it does",
+ "Zkopírovat celý výpis do schránky": "Copy the whole output to the clipboard",
+ "Kopírovat výpis": "Copy output",
+ "Kopírovat": "Copy",
  "aktuální": "up to date",
  "synchronizuje…": "syncing…",
  "Popisek ikony na PC:": "Tray icon text on the PC:",
@@ -805,7 +813,7 @@ I18N.add(/*BEGIN*/{
  "Z mobilu spouštíš, co mají karty nastavené (synchronizace, buildy, skripty, zálohy, GitHub, FW), a sleduješ průběh a log. Karty a nastavení se upravují jen na PC.": "From the phone you run what the cards have set (synchronization, builds, scripts, backups, GitHub, FW) and watch the progress and log. Cards and settings are edited on the PC only.",
  "Odhlásit toto zařízení": "Sign out this device",
  "Podle telefonu": "By the phone",
- " · {}": " · {}",
+ " · {}": "· {}",
  "Vrátit přepínač": "Put the switch back",
  "Vyškrtnout jen pro tento build": "Strike out for this build only",
  "Přidáno jen pro tento build – klikem odebrat": "Added for this build only – click to remove",

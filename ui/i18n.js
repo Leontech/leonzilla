@@ -67,19 +67,24 @@ const I18N = (() => {
 
   function skip(el) { return el.closest && el.closest('[translate="no"], textarea, script, style'); }
 
+  // the English text this translator wrote into a node – a translation of a translation is never done
+  // (an entry whose English could match a Czech pattern again would otherwise loop: text → observer → text …)
+  const done = new WeakMap(), adone = new WeakMap();
+  const attrDone = (el, a) => adone.get(el)?.[a];
+  const attrSet = (el, a, t) => { const o = adone.get(el) || {}; o[a] = t; adone.set(el, o); };
   function doNode(n) {
     if (n.nodeType === 3) {
       const p = n.parentElement;
       if (!p || skip(p)) return;
       const v = n.nodeValue;
-      if (!v || !/\p{L}/u.test(v)) return;
+      if (!v || !/\p{L}/u.test(v) || done.get(n) === v) return;
       const t = tr(v);
-      if (t !== v) n.nodeValue = t;
+      if (t !== v) { n.nodeValue = t; done.set(n, t); }
     } else if (n.nodeType === 1) {
       if (skip(n)) return;
       for (const a of ATTRS) {
         const v = n.getAttribute(a);
-        if (v && /\p{L}/u.test(v)) { const t = tr(v); if (t !== v) n.setAttribute(a, t); }
+        if (v && /\p{L}/u.test(v) && attrDone(n, a) !== v) { const t = tr(v); if (t !== v) { n.setAttribute(a, t); attrSet(n, a, t); } }
       }
       const w = document.createTreeWalker(n, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
         acceptNode: (x) => (x.nodeType === 1 && x.matches('[translate="no"], textarea, script, style') ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
@@ -89,7 +94,7 @@ const I18N = (() => {
         if (x.nodeType === 3) doNode(x);
         else for (const a of ATTRS) {
           const v = x.getAttribute(a);
-          if (v && /\p{L}/u.test(v)) { const t = tr(v); if (t !== v) x.setAttribute(a, t); }
+          if (v && /\p{L}/u.test(v) && attrDone(x, a) !== v) { const t = tr(v); if (t !== v) { x.setAttribute(a, t); attrSet(x, a, t); } }
         }
         x = w.nextNode();
       }

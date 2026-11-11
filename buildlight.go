@@ -23,6 +23,18 @@ type BuildLight struct {
 	// more variants of the parameters (Args = the first one, may be empty); with more variants the confirmation asks which one
 	MoreArgs []string `json:"moreArgs,omitempty"`
 	LastArgs *string  `json:"lastArgs,omitempty"` // variant chosen last time (only with more variants; may be "")
+	// notes – what the script / a variant of the parameters does; shown in the card settings and when choosing what to run.
+	// ArgNotes go with argVariants() (0 = Args, 1… = MoreArgs). Optional: cards without them stay as they were.
+	Note     string   `json:"note,omitempty"`
+	ArgNotes []string `json:"argNotes,omitempty"`
+}
+
+func cleanScriptNote(s string) string {
+	s = strings.Join(strings.Fields(s), " ")
+	if r := []rune(s); len(r) > 200 {
+		s = string(r[:200])
+	}
+	return s
 }
 
 func (b *BuildLight) normalize() {
@@ -32,21 +44,41 @@ func (b *BuildLight) normalize() {
 	if r := []rune(b.Label); len(r) > 60 {
 		b.Label = string(r[:60])
 	}
-	// variants of the parameters without duplicates (the first one stays in Args)
-	seen := map[string]bool{b.Args: true}
-	var more []string
-	for _, a := range b.MoreArgs {
-		a = strings.TrimSpace(a)
-		if !seen[a] {
-			seen[a] = true
-			more = append(more, a)
+	b.Note = cleanScriptNote(b.Note)
+	note := func(i int) string { // note of the i-th variant as it came (0 = Args)
+		if i < len(b.ArgNotes) {
+			return cleanScriptNote(b.ArgNotes[i])
 		}
+		return ""
+	}
+	// variants of the parameters without duplicates (the first one stays in Args); their notes move with them
+	seen := map[string]int{b.Args: 0}
+	notes := []string{note(0)}
+	var more []string
+	for i, a := range b.MoreArgs {
+		a = strings.TrimSpace(a)
+		if k, dup := seen[a]; dup {
+			if notes[k] == "" {
+				notes[k] = note(i + 1)
+			}
+			continue
+		}
+		seen[a] = len(notes)
+		notes = append(notes, note(i+1))
+		more = append(more, a)
 	}
 	b.MoreArgs = more
+	for len(notes) > 0 && notes[len(notes)-1] == "" { // no notes = no field in the config
+		notes = notes[:len(notes)-1]
+	}
+	b.ArgNotes = notes
+	if len(notes) == 0 {
+		b.ArgNotes = nil
+	}
 	if b.LastArgs != nil {
 		v := strings.TrimSpace(*b.LastArgs)
 		b.LastArgs = &v
-		if len(b.MoreArgs) == 0 || !seen[v] {
+		if _, ok := seen[v]; len(b.MoreArgs) == 0 || !ok {
 			b.LastArgs = nil
 		}
 	}

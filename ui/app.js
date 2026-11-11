@@ -54,6 +54,13 @@ const scTitle = (l) => (l?.label || "").trim() || scName(l);
 const scKey = (l) => scPath(l) + "|" + (l?.args || "").trim();
 // variants of the parameters of a script: args (the first, may be empty) + moreArgs, without duplicates
 const scArgs = (l) => [...new Set([(l?.args || "").trim(), ...(l?.moreArgs || []).map((a) => (a || "").trim())])];
+// notes to the variants of the parameters, in the order of scArgs (a duplicate variant gives its note to the first one)
+const scArgNotes = (l) => {
+  const raw = [(l?.args || "").trim(), ...(l?.moreArgs || []).map((a) => (a || "").trim())], notes = l?.argNotes || [], out = new Map();
+  raw.forEach((a, i) => { const n = (notes[i] || "").trim(); if (!out.has(a) || (!out.get(a) && n)) out.set(a, n); });
+  return scArgs(l).map((a) => out.get(a) || "");
+};
+const scNote = (l) => (l?.note || "").trim();
 const argText = (a) => a || tr("bez parametrů");
 const lightName = (t) => scName(lights(t)[0]);
 // kind of a script by its extension (shown in the build list / confirmation)
@@ -145,6 +152,26 @@ async function api(method, path, body) {
     throw e;
   }
   return data;
+}
+
+// clipboard: the API needs a secure page (the phone over http is not) – then the old way through a hidden textarea
+async function copyToClipboard(txt) {
+  try { await navigator.clipboard.writeText(txt); return true; } catch {}
+  const ta = document.createElement("textarea");
+  ta.value = txt; ta.style.position = "fixed"; ta.style.opacity = "0";
+  document.body.append(ta); ta.select();
+  let ok = false; try { ok = document.execCommand("copy"); } catch {}
+  ta.remove(); return ok;
+}
+// the whole output of the last job of a card (script, build, synchronization …) into the clipboard
+async function copyJobLog(id) {
+  if (!id) return;
+  try {
+    const j = await api("GET", `/api/tabs/${id}/job?log=0`);
+    const lines = (j.log || []).map((l) => `${new Date(l.t).toLocaleTimeString(I18N.locale())}  ${l.text}`);
+    if (!lines.length) return toast("Výpis je prázdný");
+    toast(await copyToClipboard(lines.join("\r\n")) ? `Zkopírováno ${fmtNum(lines.length)} řádků` : "Kopírování se nepovedlo – označ text a dej Ctrl+C", false);
+  } catch (e) { toast(e.message, true); }
 }
 
 function toast(msg, err = false) {
@@ -1974,11 +2001,14 @@ function bindLight(t) {
       ${multi ? `<div class="f c12 lhead"><span class="lab">Skript ${i + 1}</span><button type="button" class="icon-btn small" data-ldel="${i}" title="Odebrat skript">${icon("x")}</button></div>` : ""}
       <div class="f c12"><label for="f-lscript${i}">Skript ${i === 0 ? `<span class="note">– Python (.py), dávka (.bat, .cmd) nebo PowerShell (.ps1); spustí se ve své složce; když doběhne bez chyby (kód 0), karta nahraje složky na server. Na kartě vypadá jako build: <i>Build + Synchronizovat</i>, <i>Jen build</i>, <i>Jen nahrát</i>.</span>` : ""}</label>
         <div class="path-field"><input id="f-lscript${i}" data-li="${i}" data-lk="script" value="${esc(l.script || "")}" placeholder="C:\\Projekty\\web\\build.py · build.bat" spellcheck="false">
-        ${S.canPickDir ? `<button type="button" data-lpick="${i}" title="Vybrat skript">${icon("file")}</button>` : ""}</div></div>
-      <div class="f c12"><label for="f-largs${i}">Parametry skriptu <span class="note">– nepovinné, např. <code>--release</code>${(l.moreArgs || []).length ? " · při spuštění vybereš, se kterými poběží" : ""}</span></label>
+        ${S.canPickDir ? `<button type="button" data-lpick="${i}" title="Vybrat skript">${icon("file")}</button>` : ""}</div>
+      </div>
+      <div class="f c12"><label for="f-lnote${i}">Poznámka ke skriptu <span class="note">– nepovinné, co skript dělá; ukáže se při spuštění</span></label>
+        <input id="f-lnote${i}" data-li="${i}" data-lk="note" value="${esc(l.note || "")}" maxlength="200" spellcheck="false" placeholder="např. Build FW a nahrání do zařízení"></div>
+      <div class="f c12"><label for="f-largs${i}">Parametry skriptu <span class="note">– nepovinné, např. <code>--release</code>${(l.moreArgs || []).length ? " · při spuštění vybereš, se kterými poběží" : ""}</span> <span class="note lnote-hint">Vpravo k variantě můžeš napsat poznámku, co dělá.</span></label>
         <div class="largs">
-          <div class="larg"><input id="f-largs${i}" data-li="${i}" data-lk="args" value="${esc(l.args || "")}" spellcheck="false" placeholder="bez parametrů"></div>
-          ${(l.moreArgs || []).map((a, k) => `<div class="larg"><input data-li="${i}" data-lma="${k}" value="${esc(a || "")}" spellcheck="false" placeholder="bez parametrů"><button type="button" class="icon-btn small" data-li="${i}" data-lmadel="${k}" title="Odebrat parametry">${icon("x")}</button></div>`).join("")}
+          <div class="larg"><input id="f-largs${i}" data-li="${i}" data-lk="args" value="${esc(l.args || "")}" spellcheck="false" placeholder="bez parametrů"><input class="lnote" data-li="${i}" data-lan="0" value="${esc((l.argNotes || [])[0] || "")}" maxlength="200" spellcheck="false" placeholder="poznámka – co to dělá"><span class="lnote-gap"></span></div>
+          ${(l.moreArgs || []).map((a, k) => `<div class="larg"><input data-li="${i}" data-lma="${k}" value="${esc(a || "")}" spellcheck="false" placeholder="bez parametrů"><input class="lnote" data-li="${i}" data-lan="${k + 1}" value="${esc((l.argNotes || [])[k + 1] || "")}" maxlength="200" spellcheck="false" placeholder="poznámka – co to dělá"><button type="button" class="icon-btn small" data-li="${i}" data-lmadel="${k}" title="Odebrat parametry">${icon("x")}</button></div>`).join("")}
           <div><button type="button" class="ghost small" data-laadd="${i}">${icon("plus")}Přidat parametry</button></div>
         </div></div>
       <div class="f c12"><label for="f-llabel${i}">${multi ? `Název v nabídce <span class="note">– nepovinné, např. <i>Vydat na GitHub</i> · prázdné = název souboru · s jediným skriptem je to popisek tlačítka</span>` : `Popisek tlačítka <span class="note">– nepovinné, např. <i>Build a nahrát na leotech.cz</i> · prázdné = výchozí popisek</span>`}</label>
@@ -1998,7 +2028,20 @@ function bindLight(t) {
       setMore(+inp.dataset.li, (m) => { m[+inp.dataset.lma] = inp.value; return m; });
       changed(); scheduleSave(t);
     }));
+    // notes to the variants (argNotes: 0 = args, 1… = moreArgs)
+    const setNotes = (i, fn) => {
+      const arr = list(); const l = { ...empty(), ...arr[i] };
+      const n = fn([...(l.argNotes || [])]);
+      while (n.length && !(n[n.length - 1] || "").trim()) n.pop();
+      if (n.length) l.argNotes = n; else delete l.argNotes;
+      arr[i] = l; store(arr);
+    };
+    box.querySelectorAll("[data-lan]").forEach((inp) => (inp.oninput = () => {
+      setNotes(+inp.dataset.li, (n) => { const k = +inp.dataset.lan; while (n.length < k) n.push(""); n[k] = inp.value; return n; });
+      scheduleSave(t);
+    }));
     box.querySelectorAll("[data-lmadel]").forEach((btn) => (btn.onclick = () => {
+      setNotes(+btn.dataset.li, (n) => { n.splice(+btn.dataset.lmadel + 1, 1); return n; });
       setMore(+btn.dataset.li, (m) => { m.splice(+btn.dataset.lmadel, 1); return m; });
       draw(); changed(); scheduleSave(t, 0);
     }));
@@ -2348,6 +2391,7 @@ function openBuildWindow(id, kind) {
       <ol class="act-log bw-log" id="bw-log" translate="no"></ol>
     </div>
     <div class="modal-f">
+      <button class="plain small" id="bw-copy" title="Zkopírovat celý výpis do schránky">${icon("copy")}Kopírovat výpis</button>
       <button class="plain small left" id="bw-fulllog">${icon("log")}Celý log</button>
       <button class="ghost" id="bw-hide">Skrýt</button>
       <button class="danger" id="bw-stop">Zastavit</button>
@@ -2355,6 +2399,7 @@ function openBuildWindow(id, kind) {
     $("#bw-hide", box).onclick = close;
     $("#bw-stop", box).onclick = () => { api("POST", `/api/tabs/${id}/cancel`).catch(() => {}); toast("Zastavuji…"); };
     $("#bw-fulllog", box).onclick = () => api("POST", `/api/tabs/${id}/openlog`).catch((e) => toast(e.message, true));
+    $("#bw-copy", box).onclick = () => copyJobLog(id);
   }, true);
   $("#overlay .modal").classList.add("bw");
   pollBuildWindow();
@@ -2642,9 +2687,9 @@ async function confirmSync(t, mode) {
         ${bl.length || !lpick ? `<p class="cl-h">${!bl.length ? "Skript:" : bl.length + (lt && !lpick ? 1 : 0) > 1 ? "Buildy v tomto pořadí:" : "Build:"}</p>
         <ol>${bl.map((b) => `<li><b translate="no">${esc(b.name)}</b> <span class="note">konfigurace ${esc(b.config)}${b.crlf ? " · CRLF" : ""}${b.postBuild ? " · post-build" : ""}</span>
           ${b.postBuild ? `<label class="binfo"><span>Info k verzi</span><input data-binfo="${esc(b.id)}" value="${esc(cardBuildInfo(t, b))}" maxlength="80" spellcheck="false" placeholder="prázdné = bez info" title="Karta si text zapamatuje pro příště"><button type="button" class="icon-btn small" data-binfo-reset="${esc(b.id)}" title="Vrátit výchozí text z nastavení buildu: ${esc(buildInfo(b) || "(bez info)")}">↺</button></label>` : ""}
-          <div class="sw-line bdefs" data-bdefs="${esc(b.id)}"></div></li>`).join("")}${lt && !lpick ? `<li><b>${esc(lightName(t))}</b> <span class="note">${scriptOnly(t) ? "" : "skript · "}${esc(lightKind(t))}${lights(t)[0].args ? " · " + esc(lights(t)[0].args) : ""}</span></li>` : ""}</ol>` : ""}
+          <div class="sw-line bdefs" data-bdefs="${esc(b.id)}"></div></li>`).join("")}${lt && !lpick ? `<li><b>${esc(lightName(t))}</b> <span class="note">${scriptOnly(t) ? "" : "skript · "}${esc(lightKind(t))}${lights(t)[0].args ? " · " + esc(lights(t)[0].args) : ""}</span>${scNote(lights(t)[0]) || scArgNotes(lights(t)[0])[0] ? `<span class="lp-note" translate="no">${esc([scNote(lights(t)[0]), scArgNotes(lights(t)[0])[0]].filter(Boolean).join(" – "))}</span>` : ""}</li>` : ""}</ol>` : ""}
         ${lpick ? `<div id="m-lpick">${lmulti ? `<p class="cl-h">${bl.length ? "Potom skript – vyber, který poběží:" : "Vyber skript, který poběží:"}</p>
-          <div class="lpicks">${ls.map((l, i) => `<label class="check lp"><input type="radio" name="m-ls" value="${i}" ${i === lsel ? "checked" : ""}><span><b>${esc(scTitle(l))}</b> <span class="note">${(l.label || "").trim() ? esc(scName(l)) + " · " : ""}${esc(scKind(l))}${scArgs(l).length === 1 && l.args ? " · " + esc(l.args) : ""}</span></span></label>`).join("")}</div>` : ""}
+          <div class="lpicks">${ls.map((l, i) => `<label class="check lp"><input type="radio" name="m-ls" value="${i}" ${i === lsel ? "checked" : ""}><span><b>${esc(scTitle(l))}</b> <span class="note">${(l.label || "").trim() ? esc(scName(l)) + " · " : ""}${esc(scKind(l))}${scArgs(l).length === 1 && l.args ? " · " + esc(l.args) : ""}</span>${scNote(l) ? `<span class="lp-note" translate="no">${esc(scNote(l))}</span>` : ""}</span></label>`).join("")}</div>` : ""}
           <div id="m-largs"></div></div>` : ""}
         <div id="m-bwarn"></div>
         ${doSync ? `<p class="note">Synchronizace začne, až všechny buildy doběhnou bez chyby.</p>` : ""}
@@ -2721,8 +2766,9 @@ async function confirmSync(t, mode) {
         const l = ls[lsel], va = scArgs(l);
         if (va.length < 2) { el.innerHTML = ""; return; }
         const last = typeof l.lastArgs === "string" && va.includes(l.lastArgs.trim()) ? l.lastArgs.trim() : va[0];
-        el.innerHTML = `<p class="cl-h">${lmulti ? "Parametry:" : `Parametry skriptu ${esc(scName(l))}:`}</p>
-          <div class="lpicks">${va.map((a, k) => `<label class="check lp"><input type="radio" name="m-la" value="${k}" ${a === last ? "checked" : ""}><span>${a ? `<code translate="no">${esc(a)}</code>` : `<span class="note">bez parametrů</span>`}</span></label>`).join("")}</div>`;
+        const vn = scArgNotes(l);
+        el.innerHTML = `${!lmulti && scNote(l) ? `<p class="lp-note top" translate="no">${esc(scNote(l))}</p>` : ""}<p class="cl-h">${lmulti ? "Parametry:" : `Parametry skriptu ${esc(scName(l))}:`}</p>
+          <div class="lpicks">${va.map((a, k) => `<label class="check lp"><input type="radio" name="m-la" value="${k}" ${a === last ? "checked" : ""}><span>${a ? `<code translate="no">${esc(a)}</code>` : `<span class="note">bez parametrů</span>`}${vn[k] ? `<span class="lp-note" translate="no">${esc(vn[k])}</span>` : ""}</span></label>`).join("")}</div>`;
       };
       box.querySelectorAll('input[name="m-ls"]').forEach((r) => (r.onchange = () => { lsel = +r.value; drawArgs(); }));
       drawArgs();
@@ -2975,6 +3021,7 @@ $("#btn-close-act").onclick = (e) => {
   } else hideActivity();
 };
 $("#btn-open-log").onclick = () => S.jobTab && api("POST", `/api/tabs/${S.jobTab}/openlog`).catch((e) => toast(e.message, true));
+$("#btn-copy-log").onclick = () => copyJobLog(S.jobTab);
 
 function showPreview(t, j) {
   const plans = (j.plans || []).map((p) => ({ ...p, files: p.files || [], dirs: p.dirs || [] }));

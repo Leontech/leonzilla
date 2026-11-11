@@ -790,6 +790,13 @@ button.mon-btn.live { box-shadow: 0 0 0 3px color-mix(in srgb, var(--fw) 35%, tr
 #f-lights .largs { display: flex; flex-direction: column; gap: 6px; }
 #f-lights .larg { display: flex; gap: 6px; align-items: center; }
 #f-lights .larg input { flex: 1; min-width: 0; }
+#f-lights .larg input.lnote { flex: 1.4; font-size: 13px; }
+#f-lights .larg .lnote-gap { flex: none; width: 28px; } /* lines the first note up with the ones that have the ✕ button */
+.check.lp .lp-note, .bsteps-c li .lp-note { display: block; font-size: 12.5px; color: var(--muted); margin-top: 1px; }
+.check.lp input:not(:checked) + span .lp-note { color: var(--faint); }
+#f-lights .lnote-hint { display: block; margin-top: 2px; }
+p.lp-note.top { margin: 0 0 8px; font-size: 13px; color: var(--muted); }
+@media (max-width: 640px) { #f-lights .larg { flex-wrap: wrap; } #f-lights .larg input.lnote { flex-basis: 100%; order: 3; } #f-lights .larg .lnote-gap { display: none; } }
 #m-lpick .cl-h { margin-top: 10px; }
 #m-lpick > .cl-h:first-child { margin-top: 0; }
 #f-lights .f.row-btns { flex-direction: row; align-items: center; justify-content: flex-start; }

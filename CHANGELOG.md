@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.11.21 – 2026-11-10
+
+- **Notes to own scripts.** In the card settings (*Own script*) every script can have a note (*Note to the script*) and every set of parameters a note on the right of it – briefly what it does, e.g. `cpboot` = *control panel + bootloader*. The notes are shown in the confirmation when you choose the script and the parameters (on the phone too). Optional – cards without notes are not changed.
+- **Copy the script output.** *Copy output* in the progress window and *Copy* in the panel at the bottom put the whole output of the last run (with times) into the clipboard – on the phone too.
+- English UI: opening the settings of a card with more sets of script parameters no longer freezes the window (a translation that was translated again and again).
+
 ## 1.11.20 – 2026-10-29
 
 **Remote access from a phone**
