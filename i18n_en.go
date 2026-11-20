@@ -217,4 +217,5 @@ var enCatalog = map[string]string{
 	"Hotovo s chybami – viz log":                         "Finished with errors – see the log",
 	"Projekt %d":                                         "Project %d",
 	" (kopie)":                                           " (copy)",
+	"(%d× upozornění na konce řádků LF/CRLF – nejde o chybu, vynecháno)": "(%d× line-ending warning LF/CRLF – not an error, left out)",
 }

@@ -100,6 +100,11 @@ func gitPath() string {
 
 // runGit runs git in dir. stdin may be nil.
 func runGit(ctx context.Context, dir string, stdin []byte, args ...string) (string, error) {
+	return runGitEnv(ctx, dir, stdin, nil, args...)
+}
+
+// runGitEnv = runGit with extra environment variables (e.g. GIT_INDEX_FILE).
+func runGitEnv(ctx context.Context, dir string, stdin []byte, env []string, args ...string) (string, error) {
 	exe := gitPath()
 	if exe == "" {
 		return "", errors.New(T("Git není nainstalovaný (Git for Windows: https://git-scm.com)"))
@@ -107,7 +112,7 @@ func runGit(ctx context.Context, dir string, stdin []byte, args ...string) (stri
 	full := append([]string{"--literal-pathspecs", "-c", "core.quotepath=off", "-c", "color.ui=never", "-c", "core.pager=", "-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, exe, full...)
 	prepareCmd(cmd)
-	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_PAGER=", "GCM_INTERACTIVE=auto")
+	cmd.Env = append(append(os.Environ(), "GIT_TERMINAL_PROMPT=0", "GIT_OPTIONAL_LOCKS=0", "GIT_PAGER=", "GCM_INTERACTIVE=auto"), env...)
 	if stdin != nil {
 		cmd.Stdin = bytes.NewReader(stdin)
 	}
@@ -367,13 +372,14 @@ type gitCommitRes struct {
 func gitCommit(req gitCommitReq, logf func(kind, text string)) *gitCommitRes {
 	res := &gitCommitRes{Steps: []*GitStep{}}
 	repo := strings.TrimSpace(req.Path)
+	var stepEnv []string // extra environment of the next steps (commit from a temporary index)
 	step := func(name string, timeout time.Duration, stdin []byte, args ...string) (string, bool) {
 		ctx, cancel := context.WithTimeout(context.Background(), timeout)
 		defer cancel()
-		out, err := runGit(ctx, repo, stdin, args...)
-		st := &GitStep{Name: name, OK: err == nil, Out: strings.TrimSpace(out)}
+		out, err := runGitEnv(ctx, repo, stdin, stepEnv, args...)
+		st := &GitStep{Name: name, OK: err == nil, Out: tidyGitOut(strings.TrimSpace(out))}
 		if err != nil {
-			st.Out = strings.TrimSpace(strings.TrimSpace(out) + "\n" + err.Error())
+			st.Out = tidyGitOut(strings.TrimSpace(strings.TrimSpace(out) + "\n" + err.Error()))
 		}
 		res.Steps = append(res.Steps, st)
 		k := "ok"
@@ -402,16 +408,38 @@ func gitCommit(req gitCommitReq, logf func(kind, text string)) *gitCommitRes {
 		if cur.Busy != "" {
 			return fail(T("V repozitáři právě probíhá ") + cur.Busy + T(" – dokonči ho ručně"))
 		}
+		// git add gets only files with a change in the working copy (Y != '.', new "??"). A change that is only in the
+		// index (e.g. "D." after git rm --cached of an ignored file, or a deletion already staged by git add -A) goes
+		// to the commit as it is – git add would fail on it ("paths are ignored", "pathspec did not match any files").
+		// The state comes from git now, not from the window (the file list may be minutes old).
+		now := map[string]string{}
+		for _, f := range cur.Files {
+			now[f.Path] = f.XY
+		}
 		var spec, addSpec bytes.Buffer
+		nAdd := 0
 		for _, f := range req.Files {
 			spec.WriteString(f.Path + "\x00")
-			addSpec.WriteString(f.Path + "\x00")
 			if f.Orig != "" {
 				spec.WriteString(f.Orig + "\x00") // commit the removal of the old name too
 			}
+			xy, known := now[f.Path]
+			if !known {
+				// not in the list (more than gitMaxFiles changes) – an existing file can always be added
+				if _, err := os.Stat(filepath.Join(cur.Root, filepath.FromSlash(f.Path))); err != nil || !cur.Truncated {
+					continue
+				}
+				xy = " M"
+			}
+			if xy == "??" || (len(xy) == 2 && xy[1] != '.' && xy[1] != ' ') {
+				addSpec.WriteString(f.Path + "\x00")
+				nAdd++
+			}
 		}
-		if _, ok := step(T("Přidání souborů"), 2*time.Minute, addSpec.Bytes(), "add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul"); !ok {
-			return fail(T("git add se nepovedl"))
+		if nAdd > 0 {
+			if _, ok := step(T("Přidání souborů"), 2*time.Minute, addSpec.Bytes(), "add", "-A", "--pathspec-from-file=-", "--pathspec-file-nul"); !ok {
+				return fail(T("git add se nepovedl"))
+			}
 		}
 		msg := strings.TrimSpace(req.Message)
 		if d := strings.TrimSpace(req.Details); d != "" {
@@ -424,10 +452,44 @@ func gitCommit(req gitCommitReq, logf func(kind, text string)) *gitCommitRes {
 		mf.WriteString(msg + "\n")
 		mf.Close()
 		defer os.Remove(mf.Name())
-		if _, ok := step("Commit", 2*time.Minute, spec.Bytes(), "commit", "-F", mf.Name(), "--pathspec-from-file=-", "--pathspec-file-nul"); !ok {
+		// What goes into the commit = the index for the chosen files. "git commit -- <paths>" can't be used: it takes the
+		// files from the working copy, so a file removed with git rm --cached (still on the disk) would be committed
+		// again. When the index holds no other staged change, a plain commit is exact; otherwise the commit is made
+		// from a temporary index = HEAD + the chosen files from the index, and other staged changes stay staged.
+		chosen := map[string]bool{}
+		for _, p := range strings.Split(strings.TrimRight(spec.String(), "\x00"), "\x00") {
+			chosen[p] = true
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+		staged, err := runGit(ctx, repo, nil, "diff", "--cached", "--name-only", "-z", "--no-renames")
+		cancel()
+		if err != nil && !cur.NoCommits {
+			return fail(err.Error())
+		}
+		others := false
+		for _, p := range strings.Split(staged, "\x00") {
+			if p != "" && !chosen[p] {
+				others = true
+				break
+			}
+		}
+		if cur.NoCommits {
+			others = false // the first commit: everything that is staged
+		}
+		if others {
+			tmp, err := gitTempIndex(repo, chosen)
+			if err != nil {
+				return fail(T("Commit se nepovedl") + ": " + err.Error())
+			}
+			defer os.Remove(tmp)
+			stepEnv = []string{"GIT_INDEX_FILE=" + tmp}
+		}
+		_, ok := step("Commit", 2*time.Minute, nil, "commit", "-F", mf.Name())
+		stepEnv = nil
+		if !ok {
 			return fail(T("Commit se nepovedl"))
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel = context.WithTimeout(context.Background(), 30*time.Second)
 		h, _ := runGit(ctx, repo, nil, "rev-parse", "--short", "HEAD")
 		cancel()
 		res.Hash = strings.TrimSpace(h)
@@ -489,4 +551,67 @@ func appendTabLog(dataDir, tabID, kind, text string) {
 	}
 	defer f.Close()
 	fmt.Fprintf(f, "%s  %-4s %s\n", time.Now().Format("2006-01-02 15:04:05"), kind, text)
+}
+
+// tidyGitOut folds git's line-ending warnings ("warning: in the working copy of '…', LF will be replaced by CRLF …" –
+// one per file, hundreds in a big commit) into one line, so the real error message at the end stays visible.
+func tidyGitOut(s string) string {
+	var keep []string
+	n := 0
+	for _, l := range strings.Split(s, "\n") {
+		t := strings.TrimSpace(l)
+		if strings.HasPrefix(t, "warning: in the working copy of ") && (strings.Contains(t, "will be replaced by") || strings.Contains(t, "nahrazen")) {
+			n++
+			continue
+		}
+		keep = append(keep, l)
+	}
+	if n == 0 {
+		return s
+	}
+	note := fmt.Sprintf(T("(%d× upozornění na konce řádků LF/CRLF – nejde o chybu, vynecháno)"), n)
+	return strings.TrimSpace(strings.TrimSpace(strings.Join(keep, "\n")) + "\n" + note) // the real message first
+}
+
+// gitTempIndex makes a temporary index = HEAD + the entries of the chosen paths from the real index (a chosen path
+// missing in the index = removed). Committing from it records exactly the chosen files as they are staged.
+func gitTempIndex(repo string, chosen map[string]bool) (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+	ls, err := runGit(ctx, repo, nil, "ls-files", "-s", "-z")
+	if err != nil {
+		return "", err
+	}
+	var info bytes.Buffer
+	seen := map[string]bool{}
+	for _, e := range strings.Split(ls, "\x00") {
+		tab := strings.IndexByte(e, '\t')
+		if tab < 0 {
+			continue
+		}
+		if p := e[tab+1:]; chosen[p] && !seen[p] {
+			seen[p] = true
+			info.WriteString(e + "\x00") // "mode sha stage<TAB>path"
+		}
+	}
+	for p := range chosen {
+		if !seen[p] {
+			info.WriteString("0 0000000000000000000000000000000000000000\t" + p + "\x00") // removed
+		}
+	}
+	f, err := os.CreateTemp("", "leonzilla-index-*")
+	if err != nil {
+		return "", err
+	}
+	f.Close()
+	os.Remove(f.Name()) // git creates it
+	env := []string{"GIT_INDEX_FILE=" + f.Name()}
+	if _, err := runGitEnv(ctx, repo, nil, env, "read-tree", "HEAD"); err != nil {
+		return "", err
+	}
+	if _, err := runGitEnv(ctx, repo, info.Bytes(), env, "update-index", "-z", "--index-info"); err != nil {
+		os.Remove(f.Name())
+		return "", err
+	}
+	return f.Name(), nil
 }

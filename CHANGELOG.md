@@ -1,6 +1,11 @@
 # Changelog
 
-## 1.11.21 – 2026-11-10
+## 1.11.22 – 2026-11-20
+
+- **GitHub backup:** fixed *git add failed* when some of the chosen files were already staged – e.g. a file removed with `git rm --cached` and added to `.gitignore`, or a deletion staged by `git add -A` run by hand. Only files changed in the working copy are added; the commit records the staged state exactly (a file removed with `git rm --cached` stays out of the repository and stays on the disk). If you chose only some files, other staged changes stay staged and are not committed.
+- **GitHub backup:** the step output no longer lists hundreds of `LF will be replaced by CRLF` warnings – they are left out with one note at the end, so the real git error is visible.
+
+Also in this release (1.11.21 was not released on its own):
 
 - **Notes to own scripts.** In the card settings (*Own script*) every script can have a note (*Note to the script*) and every set of parameters a note on the right of it – briefly what it does, e.g. `cpboot` = *control panel + bootloader*. The notes are shown in the confirmation when you choose the script and the parameters (on the phone too). Optional – cards without notes are not changed.
 - **Copy the script output.** *Copy output* in the progress window and *Copy* in the panel at the bottom put the whole output of the last run (with times) into the clipboard – on the phone too.
